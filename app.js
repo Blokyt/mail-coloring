@@ -12,6 +12,12 @@ document.addEventListener('DOMContentLoaded', function () {
     const editor = document.getElementById('editor');
     const toast = document.getElementById('toast');
 
+    // Dynamic Effect Containers (Will be populated)
+    const effectsContainers = {
+        color: document.querySelector('.effects-buttons[data-category="color"]') || createContainer('color'),
+        size: document.querySelector('.effects-buttons[data-category="size"]') || createContainer('size')
+    };
+
     // Controls Collection
     const controls = {
         // Color Controls
@@ -39,8 +45,7 @@ document.addEventListener('DOMContentLoaded', function () {
         clearBtn: document.getElementById('clearBtn'),
         randomBtn: document.getElementById('randomBtn'),
 
-        // Effect Controls
-        effectButtons: document.querySelectorAll('.effect-btn'),
+        // Effect Controls (Dynamic now)
         intensitySlider: document.getElementById('effectIntensity'),
         intensityValue: document.getElementById('intensityValue')
     };
@@ -55,55 +60,78 @@ document.addEventListener('DOMContentLoaded', function () {
     };
 
     // ============================================
+    // INITIALIZATION
+    // ============================================
+
+    function init() {
+        generateEffectButtons();
+        initEventListeners();
+        editor.focus();
+    }
+
+    /**
+     * Generates effect buttons dynamically based on effects.js configuration
+     */
+    function generateEffectButtons() {
+        if (!window.EFFECTS) return;
+
+        // Helper to clear and fill container
+        const fillContainer = (category, container) => {
+            if (!container) return;
+            container.innerHTML = ''; // Clear existing static buttons
+
+            Object.entries(window.EFFECTS[category]).forEach(([key, effect]) => {
+                const btn = document.createElement('button');
+                btn.className = 'effect-btn';
+                btn.dataset.effect = key;
+                btn.dataset.category = category;
+                btn.innerHTML = `
+                    <span class="effect-icon">${effect.icon}</span>
+                    <span class="effect-name">${effect.name}</span>
+                `;
+                container.appendChild(btn);
+            });
+        };
+
+        const colorContainer = document.querySelector('.effects-buttons[data-category="color"]')
+            || document.querySelector('.effects-category:nth-of-type(1) .effects-buttons');
+        const sizeContainer = document.querySelector('.effects-buttons[data-category="size"]')
+            || document.querySelector('.effects-category:nth-of-type(2) .effects-buttons');
+
+        if (colorContainer) fillContainer('color', colorContainer);
+        if (sizeContainer) fillContainer('size', sizeContainer);
+    }
+
+    function createContainer(type) {
+        return null;
+    }
+
+    // ============================================
     // CORE SELECTION UTILITIES
     // ============================================
 
-    /**
-     * Safely retrieves the current selection within the editor.
-     * @returns {Object|null} Object containing {selection, range} or null if invalid.
-     */
     function getSelection() {
         const sel = window.getSelection();
         if (sel.rangeCount === 0) return null;
-
         const range = sel.getRangeAt(0);
         if (!editor.contains(range.commonAncestorContainer)) return null;
-
         return { selection: sel, range: range };
     }
 
-    /**
-     * Extracts text content from selection, stripping existing decoration elements.
-     * Crucial for re-applying effects without duplicating emojis/spans.
-     * @returns {string} Cleaned text content.
-     */
     function getCleanSelectedText() {
         const sel = getSelection();
         if (!sel) return '';
-
         const fragment = sel.range.cloneContents();
-        // Remove elements marked as decorations (like ✨ or 🔥 added by effects)
         const decorations = fragment.querySelectorAll('[data-decoration="true"]');
         decorations.forEach(el => el.remove());
-
         return fragment.textContent;
     }
 
-    /**
-     * Saves the current selection range to state.
-     * Used to restore selection after clicking on UI buttons (which steals focus).
-     */
     function saveSelection() {
         const sel = getSelection();
-        if (sel) {
-            savedRange = sel.range.cloneRange();
-        }
+        if (sel) savedRange = sel.range.cloneRange();
     }
 
-    /**
-     * Restores the saved selection range.
-     * @returns {boolean} True if selection was restored, false otherwise.
-     */
     function restoreSelection() {
         if (!savedRange) return false;
         const sel = window.getSelection();
@@ -112,19 +140,17 @@ document.addEventListener('DOMContentLoaded', function () {
         return true;
     }
 
-    /**
-     * Higher-order function to execute an action while maintaining selection context.
-     * @param {Function} action - The function to execute.
-     * @param {string|null} successMessage - Optional toast message on success.
-     */
-    function runWithSelection(action, successMessage = null) {
+    function runWithSelection(action, successMessage = null, allowCollapsed = false) {
         if (!restoreSelection()) {
-            showToast('Sélectionnez du texte d\'abord', true);
-            return;
+            editor.focus();
+            const sel = window.getSelection();
+            if (!sel.rangeCount || !editor.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+                showToast('Sélectionnez du texte ou placez le curseur', true);
+                return;
+            }
         }
 
         const success = action();
-
         if (success !== false && successMessage) {
             showToast(successMessage);
         }
@@ -134,20 +160,21 @@ document.addEventListener('DOMContentLoaded', function () {
     // FORMATTING LOGIC
     // ============================================
 
-    /**
-     * Applies standard inline styles using document.execCommand.
-     * Maintains legacy compatibility for Outlook.
-     * @param {string} styleProp - property to change (color, backgroundColor, etc.)
-     * @param {string} value - value to apply
-     */
     function applyInlineStyle(styleProp, value) {
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0) return;
+
+        // BUG FIX: Font Size Priority
+        if (sel.isCollapsed && styleProp === 'fontSize') {
+            insertStyledSpan('font-size', value);
+            return true;
+        }
+
         if (styleProp === 'color') {
             document.execCommand('foreColor', false, value);
         } else if (styleProp === 'backgroundColor') {
             document.execCommand('hiliteColor', false, value);
         } else if (styleProp === 'fontSize') {
-            // Workaround: execCommand 'fontSize' uses 1-7 scale.
-            // We apply size '7' temporarily then replace with precise pixel value.
             document.execCommand('fontSize', false, '7');
             const fontElements = editor.querySelectorAll('font[size="7"]');
             fontElements.forEach(el => {
@@ -155,54 +182,59 @@ document.addEventListener('DOMContentLoaded', function () {
                 el.style.fontSize = value;
             });
         } else if (styleProp === 'fontFamily') {
-            document.execCommand('fontName', false, value);
+            if (sel.isCollapsed) {
+                insertStyledSpan('font-family', value);
+            } else {
+                document.execCommand('fontName', false, value);
+            }
         }
         editor.focus();
         return true;
     }
 
-    /**
-     * Replaces the current selection with generated HTML.
-     * Keeps the new content selected to allow sequential edits.
-     * @param {string} html - HTML string to insert.
-     */
+    function insertStyledSpan(property, value) {
+        const sel = window.getSelection();
+        const range = sel.getRangeAt(0);
+
+        const span = document.createElement('span');
+        span.style[property] = value;
+        span.innerHTML = '&#8203;';
+
+        range.deleteContents();
+        range.insertNode(span);
+
+        range.setStart(span, 1);
+        range.setEnd(span, 1);
+        sel.removeAllRanges();
+        sel.addRange(range);
+    }
+
     function replaceSelectionWithHtml(html) {
         const sel = getSelection();
         if (!sel) return;
-
         const range = sel.range;
         range.deleteContents();
 
         const temp = document.createElement('div');
         temp.innerHTML = html;
-
         const fragment = document.createDocumentFragment();
         let firstNode = temp.firstChild;
         let lastNode = null;
-
         while (temp.firstChild) {
             lastNode = temp.firstChild;
             fragment.appendChild(lastNode);
         }
-
         range.insertNode(fragment);
 
-        // Maintain selection on the newly inserted content
         if (firstNode && lastNode) {
             range.setStartBefore(firstNode);
             range.setEndAfter(lastNode);
             sel.selection.removeAllRanges();
             sel.selection.addRange(range);
         }
-
         editor.focus();
     }
 
-    /**
-     * Coordinates the application of complex effects from effects.js.
-     * @param {string} category - 'color' or 'size'
-     * @param {string} effectName - key from EFFECTS object
-     */
     function applyEffect(category, effectName) {
         runWithSelection(() => {
             const selectedText = getCleanSelectedText();
@@ -211,157 +243,80 @@ document.addEventListener('DOMContentLoaded', function () {
                 return false;
             }
 
-            // Update Effect State
             activeEffects[category] = effectName;
 
-            // Visual Update
-            const categoryButtons = document.querySelectorAll(`.effect-btn[data-category="${category}"]`);
-            categoryButtons.forEach(b => b.classList.remove('active'));
-            const btn = document.querySelector(`.effect-btn[data-effect="${effectName}"]`);
-            if (btn) btn.classList.add('temp-active');
+            const btns = document.querySelectorAll(`.effect-btn[data-category="${category}"]`);
+            btns.forEach(b => b.classList.remove('active'));
+            const activeBtn = document.querySelector(`.effect-btn[data-effect="${effectName}"]`);
+            if (activeBtn) activeBtn.classList.add('temp-active');
 
-            // Generate & Apply
             const options = {
                 intensity: parseInt(controls.intensitySlider.value),
                 baseSize: parseInt(controls.fontSizeSlider.value)
             };
 
-            const html = combineEffects(selectedText, activeEffects, options);
+            const html = window.combineEffects(selectedText, activeEffects, options);
             replaceSelectionWithHtml(html);
-
             updateEffectUI();
         }, 'Effet appliqué !');
     }
 
-    /**
-     * Handles the Random Mode logic with different scenarios.
-     */
     function handleRandomMode() {
         runWithSelection(() => {
             const selectedText = getCleanSelectedText();
             if (!selectedText) return false;
 
-            // Reset pending state
-            activeEffects = { color: null, size: null };
-            // We don't strictly need these execCommands anymore since we replace the content, 
-            // but it's good safety to clear selection formatting if we were to change logic later.
-            // Actually, replacing HTML overwrites it anyway.
-
+            activeEffects = { color: null, size: null }; // Reset
             const options = {
                 intensity: parseInt(controls.intensitySlider.value),
                 baseSize: parseInt(controls.fontSizeSlider.value)
             };
 
-            // 5 Random Scenarios
-            const scenario = Math.floor(Math.random() * 5);
-            let resultHtml = selectedText;
-            let msg = '';
+            const res = window.applyRandomEffects(selectedText, options);
+            replaceSelectionWithHtml(res.html);
+            activeEffects = res.appliedEffects;
 
-            switch (scenario) {
-                case 0: // Full Effects (Color + Size)
-                    const res = applyRandomEffects(selectedText, options);
-                    resultHtml = res.html;
-                    activeEffects = res.appliedEffects;
-                    msg = 'Random: Effets complets';
-                    break;
-                case 1: // Background Color Only
-                    const bgCol = getRandomPaletteColor('bgColorPalette');
-                    resultHtml = `<span style="background-color: ${bgCol}">${selectedText}</span>`;
-                    msg = 'Random: Fond couleur';
-                    break;
-                case 2: // Text Color Only
-                    const txtCol = getRandomPaletteColor('textColorPalette');
-                    resultHtml = `<span style="color: ${txtCol}">${selectedText}</span>`;
-                    msg = 'Random: Couleur texte';
-                    break;
-                case 3: // Background + Size Effect
-                    const bgCol2 = getRandomPaletteColor('bgColorPalette');
-                    activeEffects.size = getRandomEffect('size');
-                    const innerHtml = combineEffects(selectedText, { size: activeEffects.size }, options);
-                    resultHtml = `<span style="background-color: ${bgCol2}">${innerHtml}</span>`;
-                    msg = 'Random: Fond + Taille';
-                    break;
-                case 4: // Text Color + Size Effect
-                    const txtCol2 = getRandomPaletteColor('textColorPalette');
-                    activeEffects.size = getRandomEffect('size');
-                    const innerHtml2 = combineEffects(selectedText, { size: activeEffects.size }, options);
-                    resultHtml = `<span style="color: ${txtCol2}">${innerHtml2}</span>`;
-                    msg = 'Random: Couleur + Taille';
-                    break;
-            }
-
-            // Random Formatting (Bold, Italic, Underline)
-            // "joue aussi sur la police bold italiqe et souligné mais pas barré"
-            if (Math.random() < 0.3) {
-                resultHtml = `<b>${resultHtml}</b>`;
-                // Update activeEffects just so we track something? 
-                // Actually activeEffects is mostly for the UI highlighting (effects panel), 
-                // for B/I/U we might want to update the toolbar buttons, but since we replace HTML, 
-                // the cursor position updates usually handle button state.
-            }
-            if (Math.random() < 0.3) resultHtml = `<i>${resultHtml}</i>`;
-            if (Math.random() < 0.3) resultHtml = `<u>${resultHtml}</i>`;
-
-            // Random Font Family
-            // "et la police random"
-            const FONTS = [
-                "Arial, sans-serif", "Times New Roman, serif", "Georgia, serif", "Verdana, sans-serif", "Courier New, monospace",
-                "Segoe UI, sans-serif", "Calibri, sans-serif", "Trebuchet MS, sans-serif",
-                "Comic Sans MS, cursive", "Papyrus, fantasy", "Impact, sans-serif",
-                "Tangerine, cursive", "Cinzel Decorative, serif", "MedievalSharp, cursive", "Uncial Antiqua, cursive"
-            ];
-
-            // 50% chance to change font? Or always? User said "et la police random", implies it should be part of the random mix.
-            // Let's make it always random or high probability contextually, but consistent with "Random" button behavior (total chaos).
-            const randomFont = FONTS[Math.floor(Math.random() * FONTS.length)];
-            resultHtml = `<span style="font-family: ${randomFont}">${resultHtml}</span>`;
-
-            replaceSelectionWithHtml(resultHtml);
             updateEffectUI();
-            showToast(msg);
+            showToast('Random appliqué ! 🎲');
         });
     }
 
     // ============================================
-    // EVENT LISTENERS INITIALIZATION
+    // EVENT LISTENERS
     // ============================================
 
     function initEventListeners() {
-        // --- Selection Saving ---
-        document.addEventListener('mousedown', function (e) {
+        document.addEventListener('mousedown', (e) => {
             if (!editor.contains(e.target)) saveSelection();
         });
 
-        // --- Color Palettes ---
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('.effect-btn');
+            if (btn) {
+                applyEffect(btn.dataset.category, btn.dataset.effect);
+            }
+        });
+
         controls.textColorPalette.addEventListener('click', (e) => {
             const swatch = e.target.closest('.color-swatch');
-            if (swatch) runWithSelection(() => applyInlineStyle('color', swatch.dataset.color), 'Couleur appliquée');
+            if (swatch) runWithSelection(() => applyInlineStyle('color', swatch.dataset.color), 'Couleur appliquée', true);
         });
-
         controls.bgColorPalette.addEventListener('click', (e) => {
             const swatch = e.target.closest('.color-swatch');
-            if (swatch) runWithSelection(() => applyInlineStyle('backgroundColor', swatch.dataset.color), 'Fond appliqué');
+            if (swatch) runWithSelection(() => applyInlineStyle('backgroundColor', swatch.dataset.color), 'Fond appliqué', true);
         });
 
-        // --- Custom Pickers & Clears ---
-        controls.textColorCustom.addEventListener('change', function () {
-            runWithSelection(() => applyInlineStyle('color', this.value), 'Couleur appliquée');
-        });
-        controls.bgColorCustom.addEventListener('change', function () {
-            runWithSelection(() => applyInlineStyle('backgroundColor', this.value), 'Fond appliqué');
-        });
-        controls.clearTextColorBtn.addEventListener('click', () => {
-            runWithSelection(() => applyInlineStyle('color', '#000000'), 'Couleur retirée');
-        });
-        controls.clearBgColorBtn.addEventListener('click', () => {
-            runWithSelection(() => applyInlineStyle('backgroundColor', '#ffffff'), 'Fond retiré');
-        });
+        controls.textColorCustom.addEventListener('change', function () { runWithSelection(() => applyInlineStyle('color', this.value), 'Couleur appliquée', true); });
+        controls.bgColorCustom.addEventListener('change', function () { runWithSelection(() => applyInlineStyle('backgroundColor', this.value), 'Fond appliqué', true); });
 
-        // --- Fonts & Formatting ---
         controls.fontSizeSlider.addEventListener('input', function () { controls.fontSizeValue.textContent = this.value + 'px'; });
-        controls.fontSizeSlider.addEventListener('change', function () { runWithSelection(() => applyInlineStyle('fontSize', this.value + 'px'), 'Taille appliquée'); });
+        controls.fontSizeSlider.addEventListener('change', function () {
+            runWithSelection(() => applyInlineStyle('fontSize', this.value + 'px'), 'Taille appliquée', true);
+        });
 
-        controls.fontFamilySelect.addEventListener('change', function () { runWithSelection(() => applyInlineStyle('fontFamily', this.value), 'Police appliquée'); });
+        controls.fontFamilySelect.addEventListener('change', function () {
+            runWithSelection(() => applyInlineStyle('fontFamily', this.value), 'Police appliquée', true);
+        });
 
         ['bold', 'italic', 'underline', 'strike'].forEach(type => {
             const btn = controls[`${type}Btn`];
@@ -380,142 +335,139 @@ document.addEventListener('DOMContentLoaded', function () {
             runWithSelection(() => document.execCommand('hiliteColor', false, 'transparent'), 'Formatage effacé');
         });
 
-        // --- Effects ---
-        controls.effectButtons.forEach(btn => {
-            btn.addEventListener('click', function () {
-                applyEffect(this.dataset.category, this.dataset.effect);
-            });
-        });
-
         controls.intensitySlider.addEventListener('input', function () { controls.intensityValue.textContent = this.value + '/10'; });
         controls.randomBtn.addEventListener('click', handleRandomMode);
-
-        // --- Main Actions ---
         controls.copyBtn.addEventListener('click', handleCopy);
-        controls.clearBtn.addEventListener('click', handleClear);
+        controls.clearBtn.addEventListener('click', () => {
+            if (confirm('Tout effacer ?')) {
+                editor.innerHTML = '';
+                activeEffects = { color: null, size: null };
+                updateEffectUI();
+            }
+        });
 
-        // --- Editor Interactions ---
         editor.addEventListener('keyup', updateFormatButtonStates);
         editor.addEventListener('mouseup', updateFormatButtonStates);
-        editor.addEventListener('keydown', handleKeyboardShortcuts);
     }
-
-    // ============================================
-    // ACTION HANDLERS
-    // ============================================
 
     async function handleCopy() {
         const content = editor.innerHTML;
-        if (!content || content.trim() === '' || content === '<br>') {
-            showToast('Rien à copier !', true);
-            return;
-        }
+        if (!content || content.trim() === '') { showToast('Rien à copier', true); return; }
 
-        const cleanHtml = cleanForOutlook(content);
-
+        const clean = cleanForOutlook(content);
         try {
             await navigator.clipboard.write([
                 new ClipboardItem({
-                    'text/html': new Blob([cleanHtml], { type: 'text/html' }),
+                    'text/html': new Blob([clean], { type: 'text/html' }),
                     'text/plain': new Blob([editor.textContent], { type: 'text/plain' })
                 })
             ]);
-            showToast('Copié ! Collez dans Outlook');
-        } catch (err) {
-            fallbackCopy(cleanHtml);
+            showToast('Copié pour Outlook ! 📋');
+        } catch (e) {
+            fallbackCopy(clean);
         }
     }
 
     function fallbackCopy(html) {
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = html;
-        document.body.appendChild(tempDiv);
-
-        const range = document.createRange();
-        range.selectNodeContents(tempDiv);
-        const sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
-
-        try {
-            document.execCommand('copy');
-            showToast('Copié ! Collez dans Outlook');
-        } catch (e) {
-            showToast('Erreur de copie', true);
-        }
-        document.body.removeChild(tempDiv);
-        sel.removeAllRanges();
+        const d = document.createElement('div');
+        d.innerHTML = html;
+        document.body.appendChild(d);
+        const r = document.createRange();
+        r.selectNodeContents(d);
+        const s = window.getSelection();
+        s.removeAllRanges();
+        s.addRange(r);
+        try { document.execCommand('copy'); showToast('Copié !'); } catch (e) { showToast('Erreur copie', true); }
+        document.body.removeChild(d);
+        s.removeAllRanges();
     }
-
-    function handleClear() {
-        if (confirm('Effacer tout le contenu ?')) {
-            editor.innerHTML = '';
-            activeEffects = { color: null, size: null };
-            updateEffectUI();
-            showToast('Contenu effacé');
-        }
-    }
-
-    function handleKeyboardShortcuts(e) {
-        if (e.ctrlKey || e.metaKey) {
-            const key = e.key.toLowerCase();
-            if (['b', 'i', 'u'].includes(key)) {
-                e.preventDefault();
-                controls[`${key === 'u' ? 'underline' : key === 'b' ? 'bold' : 'italic'}Btn`].click();
-            }
-        }
-    }
-
-    // ============================================
-    // UI HELPERS
-    // ============================================
 
     function updateEffectUI() {
-        controls.effectButtons.forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.effect-btn').forEach(b => b.classList.remove('active'));
         if (activeEffects.color) {
-            const btn = document.querySelector(`[data-effect="${activeEffects.color}"]`);
+            const btn = document.querySelector(`.effect-btn[data-effect="${activeEffects.color}"]`);
             if (btn) btn.classList.add('active');
         }
         if (activeEffects.size) {
-            const btn = document.querySelector(`[data-effect="${activeEffects.size}"]`);
+            const btn = document.querySelector(`.effect-btn[data-effect="${activeEffects.size}"]`);
             if (btn) btn.classList.add('active');
         }
     }
 
     function updateFormatButtonStates() {
-        controls.boldBtn.classList.toggle('active', document.queryCommandState('bold'));
-        controls.italicBtn.classList.toggle('active', document.queryCommandState('italic'));
-        controls.underlineBtn.classList.toggle('active', document.queryCommandState('underline'));
-        controls.strikeBtn.classList.toggle('active', document.queryCommandState('strikeThrough'));
+        ['bold', 'italic', 'underline', 'strikeThrough'].forEach(cmd => {
+            const id = cmd === 'strikeThrough' ? 'strikeBtn' : cmd + 'Btn';
+            const btn = document.getElementById(id);
+            if (btn) btn.classList.toggle('active', document.queryCommandState(cmd));
+        });
+        syncUIWithCursor();
     }
 
-    function showToast(message, isError = false) {
-        const toastMessage = toast.querySelector('.toast-message');
-        toastMessage.textContent = message;
-        toast.classList.remove('error');
-        if (isError) toast.classList.add('error');
-        toast.classList.add('show');
+    function syncUIWithCursor() {
+        const sel = window.getSelection();
+        if (!sel || !sel.rangeCount) return;
+
+        let node = sel.anchorNode;
+        if (node.nodeType === 3) node = node.parentNode;
+
+        if (editor.contains(node) || node === editor) {
+            const computed = window.getComputedStyle(node);
+
+            // 1. Sync Font Size
+            const fontSize = computed.fontSize;
+            if (fontSize) {
+                const sizeVal = parseFloat(fontSize);
+                if (!isNaN(sizeVal)) {
+                    controls.fontSizeSlider.value = sizeVal;
+                    controls.fontSizeValue.textContent = Math.round(sizeVal) + 'px';
+                }
+            }
+
+            // 2. Sync Font Family
+            let fontFamily = computed.fontFamily;
+            if (fontFamily) {
+                // Remove quotes "Arial" -> Arial
+                fontFamily = fontFamily.replace(/['"]/g, '');
+
+                const options = Array.from(controls.fontFamilySelect.options);
+
+                // Try Exact Match (ignoring case)
+                let match = options.find(opt => opt.value.replace(/['"]/g, '').toLowerCase() === fontFamily.toLowerCase());
+
+                // Try Simple Name Match (Arial vs Arial, sans-serif)
+                if (!match) {
+                    const simpleComputed = fontFamily.split(',')[0].trim().toLowerCase();
+                    match = options.find(opt => {
+                        const simpleOpt = opt.value.split(',')[0].trim().replace(/['"]/g, '').toLowerCase();
+                        return simpleOpt === simpleComputed;
+                    });
+                }
+
+                if (match) {
+                    controls.fontFamilySelect.value = match.value;
+                }
+            }
+        }
+    }
+
+    function showToast(msg, isError = false) {
+        const m = toast.querySelector('.toast-message');
+        m.textContent = msg;
+        toast.className = `toast show ${isError ? 'error' : ''}`;
         setTimeout(() => toast.classList.remove('show'), 2000);
     }
 
-    function getRandomPaletteColor(paletteId) {
-        const swatches = document.getElementById(paletteId).querySelectorAll('.color-swatch');
-        if (!swatches.length) return '#000000';
-        return swatches[Math.floor(Math.random() * swatches.length)].dataset.color;
-    }
-
     function cleanForOutlook(html) {
-        const temp = document.createElement('div');
-        temp.innerHTML = html;
-        temp.querySelectorAll('*').forEach(el => {
+        const t = document.createElement('div');
+        t.innerHTML = html;
+        t.querySelectorAll('*').forEach(el => {
             el.removeAttribute('class');
             el.removeAttribute('id');
             el.removeAttribute('data-decoration');
+            if (el.innerHTML === '&#8203;') el.innerHTML = ''; // Remove ZWSP
         });
-        return temp.innerHTML;
+        return t.innerHTML;
     }
 
-    // Start
-    initEventListeners();
-    editor.focus();
+    init();
 });
