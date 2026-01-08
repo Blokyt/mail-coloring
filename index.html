@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📧 Mail Coloring - Formatage Outlook</title>
+    <meta name="description"
+        content="Interface de mise en forme de texte riche pour emails Outlook avec effets spéciaux">
+
+    <!-- Google Fonts for fantasy/elvish fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700&family=MedievalSharp&family=Tangerine:wght@400;700&family=Uncial+Antiqua&family=Inter:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <h1>📧 Mail Coloring</h1>
+        </header>
+
+        <!-- Main Toolbar -->
+        <section class="toolbar-section">
+            <div class="toolbar glass-panel">
+                <!-- Text Color Palette -->
+                <div class="toolbar-group color-palette-group">
+                    <span class="toolbar-label">
+                        <span class="icon">🎨</span>
+                        <span>Couleur texte</span>
+                    </span>
+                    <div class="color-palette" id="textColorPalette">
+                        <button class="color-swatch" data-color="#ff0000" style="background:#ff0000"></button>
+                        <button class="color-swatch" data-color="#ffba6b" style="background:#ffba6b"></button>
+                        <button class="color-swatch" data-color="#fcff3d" style="background:#fcff3d"></button>
+                        <button class="color-swatch" data-color="#6ecb6b" style="background:#6ecb6b"></button>
+                        <button class="color-swatch" data-color="#4df9ff" style="background:#4df9ff"></button>
+                        <button class="color-swatch" data-color="#3d329b" style="background:#3d329b"></button>
+                        <button class="color-swatch" data-color="#ac2dac" style="background:#ac2dac"></button>
+                        <button class="color-swatch" data-color="#d12e7a" style="background:#d12e7a"></button>
+                    </div>
+                    <input type="color" id="textColorCustom" value="#ff6b6b" class="color-picker-small"
+                        title="Couleur personnalisée">
+                    <button id="clearTextColor" class="btn-small" title="Retirer la couleur">✕</button>
+                </div>
+
+                <!-- Background Color Palette -->
+                <div class="toolbar-group color-palette-group">
+                    <span class="toolbar-label">
+                        <span class="icon">🖌️</span>
+                        <span>Fond</span>
+                    </span>
+                    <div class="color-palette" id="bgColorPalette">
+                        <button class="color-swatch" data-color="#ff0000" style="background:#ff0000"></button>
+                        <button class="color-swatch" data-color="#ffba6b" style="background:#ffba6b"></button>
+                        <button class="color-swatch" data-color="#fcff3d" style="background:#fcff3d"></button>
+                        <button class="color-swatch" data-color="#6ecb6b" style="background:#6ecb6b"></button>
+                        <button class="color-swatch" data-color="#4df9ff" style="background:#4df9ff"></button>
+                        <button class="color-swatch" data-color="#3d329b" style="background:#3d329b"></button>
+                        <button class="color-swatch" data-color="#ac2dac" style="background:#ac2dac"></button>
+                        <button class="color-swatch" data-color="#d12e7a" style="background:#d12e7a"></button>
+                    </div>
+                    <input type="color" id="bgColorCustom" value="#ffd93d" class="color-picker-small"
+                        title="Couleur personnalisée">
+                    <button id="clearBgColor" class="btn-small" title="Retirer le fond">✕</button>
+                </div>
+
+                <!-- Font Size -->
+                <div class="toolbar-group">
+                    <label class="toolbar-label">
+                        <span class="icon">📏</span>
+                        <span>Taille</span>
+                        <input type="range" id="fontSize" min="8" max="72" value="16" class="slider">
+                        <span id="fontSizeValue" class="value-display">16px</span>
+                    </label>
+                </div>
+
+                <!-- Font Family -->
+                <div class="toolbar-group">
+                    <label class="toolbar-label">
+                        <span class="icon">📝</span>
+                        <span>Police</span>
+                        <select id="fontFamily" class="font-select">
+                            <optgroup label="📚 Classiques">
+                                <option value="Arial, sans-serif">Arial</option>
+                                <option value="Times New Roman, serif">Times New Roman</option>
+                                <option value="Georgia, serif">Georgia</option>
+                                <option value="Verdana, sans-serif">Verdana</option>
+                                <option value="Courier New, monospace">Courier New</option>
+                            </optgroup>
+                            <optgroup label="💼 Modernes">
+                                <option value="Segoe UI, sans-serif">Segoe UI</option>
+                                <option value="Calibri, sans-serif">Calibri</option>
+                                <option value="Trebuchet MS, sans-serif">Trebuchet MS</option>
+                            </optgroup>
+                            <optgroup label="🎭 Fantaisie">
+                                <option value="Comic Sans MS, cursive">Comic Sans MS</option>
+                                <option value="Papyrus, fantasy">Papyrus</option>
+                                <option value="Impact, sans-serif">Impact</option>
+                            </optgroup>
+                            <optgroup label="🧝 Elfique & Médiéval">
+                                <option value="Tangerine, cursive">Tangerine</option>
+                                <option value="Cinzel Decorative, serif">Cinzel Decorative</option>
+                                <option value="MedievalSharp, cursive">MedievalSharp</option>
+                                <option value="Uncial Antiqua, cursive">Uncial Antiqua</option>
+                            </optgroup>
+                        </select>
+                    </label>
+                </div>
+
+                <!-- Text Formatting Buttons -->
+                <div class="toolbar-group format-buttons">
+                    <button id="boldBtn" class="format-btn" title="Gras (Ctrl+B)"><b>B</b></button>
+                    <button id="italicBtn" class="format-btn" title="Italique (Ctrl+I)"><i>I</i></button>
+                    <button id="underlineBtn" class="format-btn" title="Souligné (Ctrl+U)"><u>U</u></button>
+                    <button id="strikeBtn" class="format-btn" title="Barré"><s>S</s></button>
+                    <button id="clearFormatBtn" class="format-btn clear-btn" title="Effacer le formatage">🧹</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Effects Panel -->
+        <section class="effects-section">
+            <div class="effects-panel glass-panel">
+                <!-- Color Effects -->
+                <div class="effects-category">
+                    <h3 class="category-title">
+                        <span class="icon">🎨</span> Effets Couleur
+                    </h3>
+                    <div class="effects-buttons">
+                        <button class="effect-btn" data-effect="rainbow" data-category="color">
+                            <span class="effect-icon">🌈</span>
+                            <span class="effect-name">Arc-en-ciel</span>
+                        </button>
+                        <button class="effect-btn" data-effect="flame" data-category="color">
+                            <span class="effect-icon">🔥</span>
+                            <span class="effect-name">Flamme</span>
+                        </button>
+                        <button class="effect-btn" data-effect="flower" data-category="color">
+                            <span class="effect-icon">🌸</span>
+                            <span class="effect-name">Fleur</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Size Effects -->
+                <div class="effects-category">
+                    <h3 class="category-title">
+                        <span class="icon">📐</span> Effets Taille
+                    </h3>
+                    <div class="effects-buttons">
+                        <button class="effect-btn" data-effect="wave" data-category="size">
+                            <span class="effect-icon">🌊</span>
+                            <span class="effect-name">Vague</span>
+                        </button>
+                        <button class="effect-btn" data-effect="rise" data-category="size">
+                            <span class="effect-icon">📈</span>
+                            <span class="effect-name">Montée</span>
+                        </button>
+                        <button class="effect-btn" data-effect="fall" data-category="size">
+                            <span class="effect-icon">📉</span>
+                            <span class="effect-name">Descente</span>
+                        </button>
+                    </div>
+                    <div class="intensity-control">
+                        <label class="toolbar-label">
+                            <span class="icon">⚡</span>
+                            <span>Intensité</span>
+                            <input type="range" id="effectIntensity" min="1" max="10" value="5"
+                                class="slider intensity-slider">
+                            <span id="intensityValue" class="value-display">5/10</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="toolbar-group">
+                    <button id="randomBtn" class="action-btn">
+                        <span class="icon">🎲</span>
+                        <span>Random</span>
+                    </button>
+                    <button id="copyBtn" class="action-btn">
+                        <span class="icon">📋</span>
+                        <span>Copier</span>
+                    </button>
+                    <button id="clearBtn" class="btn-small" title="Tout effacer">🗑️</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Editor Area -->
+        <section class="editor-section">
+            <div class="editor-container glass-panel">
+                <div id="editor" class="editor" contenteditable="true" spellcheck="true"
+                    data-placeholder="Tapez votre texte ici et sélectionnez des mots pour appliquer des effets...">
+                </div>
+            </div>
+        </section>
+
+
+
+        <!-- Toast Notification -->
+        <div id="toast" class="toast hidden">
+            <span class="toast-message"></span>
+        </div>
+    </div>
+
+    <script src="effects.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>
