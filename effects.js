@@ -82,13 +82,13 @@ function combineEffects(text, activeEffects, options = {}) {
     const chars = [...text];
     const intensity = options.intensity || 5;
     const baseSize = options.baseSize || 16;
-    
+
     // Resolve active configs
     const colorConfig = activeEffects.color ? EFFECT_CONFIGS.color[activeEffects.color] : null;
     const sizeConfig = activeEffects.size ? EFFECT_CONFIGS.size[activeEffects.size] : null;
 
     let htmlParts = [];
-    
+
     // Add Prefix Decoration
     if (colorConfig?.decoration?.before) {
         htmlParts.push(`<span data-decoration="true">${colorConfig.decoration.before}</span>`);
@@ -152,15 +152,144 @@ function getRandomEffect(category) {
     return keys[Math.floor(Math.random() * keys.length)];
 }
 
+// Color palette for uniform colors
+const COLOR_PALETTE = [
+    "#ff0000", "#ffba6b", "#fcff3d", "#6ecb6b",
+    "#4df9ff", "#3d329b", "#ac2dac", "#d12e7a",
+    "#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff"
+];
+
+function getRandomColor() {
+    return COLOR_PALETTE[Math.floor(Math.random() * COLOR_PALETTE.length)];
+}
+
+// Font palette
+const FONT_PALETTE = [
+    "Arial, sans-serif",
+    "Times New Roman, serif",
+    "Georgia, serif",
+    "Verdana, sans-serif",
+    "Courier New, monospace",
+    "Segoe UI, sans-serif",
+    "Comic Sans MS, cursive",
+    "Impact, sans-serif",
+    "Tangerine, cursive",
+    "Cinzel Decorative, serif",
+    "MedievalSharp, cursive"
+];
+
+function getRandomFont() {
+    return FONT_PALETTE[Math.floor(Math.random() * FONT_PALETTE.length)];
+}
+
 function applyRandomEffects(text, options = {}) {
-    const selected = {
-        color: getRandomEffect('color'),
-        size: getRandomEffect('size')
-    };
-    return {
-        html: combineEffects(text, selected, options),
-        appliedEffects: selected
-    };
+    const usePresetEffect = Math.random() < 0.5;
+
+    if (usePresetEffect) {
+        // ========== PRESET EFFECTS (50%) ==========
+        const effectType = Math.random();
+        let selected = { color: null, size: null };
+
+        if (effectType < 0.33) {
+            // Couleur seule (33%)
+            selected.color = getRandomEffect('color');
+        } else if (effectType < 0.66) {
+            // Taille seule (33%)
+            selected.size = getRandomEffect('size');
+        } else {
+            // Les deux (34%)
+            selected.color = getRandomEffect('color');
+            selected.size = getRandomEffect('size');
+        }
+
+        const font = getRandomFont();
+        const html = `<span style="font-family: ${font};">${combineEffects(text, selected, options)}</span>`;
+        return {
+            html,
+            appliedEffects: { mode: 'preset', ...selected, font }
+        };
+    } else {
+        // ========== SIMPLE UNIFORM MODE (50%) ==========
+        const simpleType = Math.random();
+        let uniformColor = null;
+        let uniformBg = null;
+        let appliedEffects = { mode: 'simple' };
+
+        if (simpleType < 0.4) {
+            // Couleur uniforme seulement (40%)
+            uniformColor = getRandomColor();
+            appliedEffects.color = uniformColor;
+        } else if (simpleType < 0.7) {
+            // Fond uniforme seulement (30%)
+            uniformBg = getRandomColor();
+            appliedEffects.bg = uniformBg;
+        } else {
+            // Couleur + Fond (30%)
+            uniformColor = getRandomColor();
+            uniformBg = getRandomColor();
+            // Assurer le contraste
+            while (uniformBg === uniformColor) {
+                uniformBg = getRandomColor();
+            }
+            appliedEffects.color = uniformColor;
+            appliedEffects.bg = uniformBg;
+        }
+
+        // 50% chance d'ajouter un effet de taille
+        const addSizeEffect = Math.random() < 0.5;
+        let sizeEffectName = null;
+
+        if (addSizeEffect) {
+            sizeEffectName = getRandomEffect('size');
+            appliedEffects.size = sizeEffectName;
+        }
+
+        // Build HTML
+        let html = '';
+
+        if (sizeEffectName) {
+            // Apply size effect character by character with uniform color
+            const chars = [...text];
+            const sizeConfig = EFFECT_CONFIGS.size[sizeEffectName];
+            const baseSize = options.baseSize || 16;
+            const intensity = options.intensity || 5;
+            let charIndex = 0;
+            const totalChars = chars.filter(c => c !== ' ').length;
+
+            let parts = [];
+            chars.forEach(char => {
+                if (char === ' ') {
+                    parts.push(' ');
+                    return;
+                }
+
+                const offset = sizeConfig.getOffset(charIndex, totalChars, { intensity, baseSize });
+                const size = Math.max(8, Math.round(baseSize + offset));
+
+                let style = `font-size: ${size}px;`;
+                if (uniformColor) style += ` color: ${uniformColor};`;
+                if (uniformBg) style += ` background-color: ${uniformBg};`;
+
+                parts.push(`<span style="${style}">${char}</span>`);
+                charIndex++;
+            });
+
+            html = parts.join('');
+        } else {
+            // Simple span wrapper
+            let style = '';
+            if (uniformColor) style += `color: ${uniformColor};`;
+            if (uniformBg) style += ` background-color: ${uniformBg};`;
+            html = `<span style="${style}">${text}</span>`;
+        }
+
+        // Wrap with random font
+        const font = getRandomFont();
+        appliedEffects.font = font;
+        html = `<span style="font-family: ${font};">${html}</span>`;
+
+        return { html, appliedEffects };
+    }
 }
 
 // Export

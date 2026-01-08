@@ -45,6 +45,7 @@ document.addEventListener('DOMContentLoaded', function () {
         clearBtn: document.getElementById('clearBtn'),
         randomBtn: document.getElementById('randomBtn'),
         aiColorBtn: document.getElementById('aiColorBtn'),
+        emojiBtn: document.getElementById('emojiBtn'),
 
         // Effect Controls (Dynamic now)
         intensitySlider: document.getElementById('effectIntensity'),
@@ -273,7 +274,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function handleRandomMode() {
-        runWithSelection(() => {
+        runWithSelection(async () => {
             const selectedText = getCleanSelectedText();
             if (!selectedText) return false;
 
@@ -288,6 +289,32 @@ document.addEventListener('DOMContentLoaded', function () {
             activeEffects = res.appliedEffects;
 
             updateEffectUI();
+
+            // 20% chance to add emoji
+            const addEmoji = Math.random() < 0.2;
+            const apiKey = localStorage.getItem('gemini_api_key');
+
+            if (addEmoji && apiKey) {
+                try {
+                    const emojiResult = await window.AIService.getEmojiForText(selectedText, apiKey);
+                    if (emojiResult.emoji) {
+                        // Find the end of current selection and add emoji
+                        const sel = window.getSelection();
+                        if (sel.rangeCount > 0) {
+                            const range = sel.getRangeAt(0);
+                            range.collapse(false);
+                            const emojiNode = document.createTextNode(' ' + emojiResult.emoji);
+                            range.insertNode(emojiNode);
+                        }
+                        showToast(`Random + ${emojiResult.emoji} !`);
+                        return;
+                    }
+                } catch (e) {
+                    // Silently ignore emoji errors
+                    console.warn('Emoji addition failed:', e);
+                }
+            }
+
             showToast('Random appliqué ! 🎲');
         });
     }
@@ -391,6 +418,46 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ============================================
+    // EMOJI AI
+    // ============================================
+
+    async function handleEmojiAdd() {
+        const selectedText = getCleanSelectedText();
+        if (!selectedText || selectedText.trim().length === 0) {
+            showToast('Sélectionnez du texte', true);
+            return;
+        }
+
+        const apiKey = localStorage.getItem('gemini_api_key');
+        if (!apiKey) {
+            showToast('Configurez d\'abord la clé API (bouton IA)', true);
+            return;
+        }
+
+        try {
+            showToast('Recherche d\'emoji... 🔍');
+            const result = await window.AIService.getEmojiForText(selectedText, apiKey);
+
+            if (result.emoji) {
+                // Insert emoji after the selection
+                const sel = getSelection();
+                if (sel) {
+                    sel.range.collapse(false); // Move to end of selection
+                    const emojiNode = document.createTextNode(' ' + result.emoji);
+                    sel.range.insertNode(emojiNode);
+                    editor.focus();
+                }
+                showToast(`Emoji ajouté ! ${result.emoji}`);
+            } else {
+                showToast('Aucun emoji trouvé', true);
+            }
+        } catch (error) {
+            console.error('Emoji error:', error);
+            showToast('Erreur: ' + error.message, true);
+        }
+    }
+
+    // ============================================
     // EVENT LISTENERS
     // ============================================
 
@@ -467,6 +534,7 @@ document.addEventListener('DOMContentLoaded', function () {
             controls.densityValue.textContent = this.value + '%';
         });
         controls.launchAiBtn.addEventListener('click', handleAIColoring);
+        controls.emojiBtn.addEventListener('click', handleEmojiAdd);
 
         editor.addEventListener('keyup', updateFormatButtonStates);
         editor.addEventListener('mouseup', updateFormatButtonStates);

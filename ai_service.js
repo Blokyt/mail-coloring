@@ -27,9 +27,22 @@ const AIService = (() => {
 
         const data = await response.json();
 
-        // Filter models that support generateContent
+        // Filter models that support generateContent and are text-capable
         const validModels = data.models
-            .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
+            .filter(m => {
+                // Must support generateContent
+                if (!m.supportedGenerationMethods?.includes('generateContent')) return false;
+
+                // Exclude TTS, audio-only, vision-only, and embedding models
+                const name = m.name.toLowerCase();
+                if (name.includes('tts')) return false;
+                if (name.includes('audio')) return false;
+                if (name.includes('embedding')) return false;
+                if (name.includes('aqa')) return false;
+                if (name.includes('imagen')) return false;
+
+                return true;
+            })
             .map(m => m.name.replace('models/', ''));
 
         // Sort by quality (pro > flash > others, newer versions first)
@@ -176,10 +189,67 @@ Réponse (JSON array uniquement):`;
         cachedModels = null;
     }
 
+    /**
+     * Get a relevant emoji for the given text
+     * @param {string} text - Text to analyze
+     * @param {string} apiKey - Google AI API key
+     * @returns {Promise<{emoji: string, model: string}>}
+     */
+    async function getEmojiForText(text, apiKey) {
+        const models = await fetchAvailableModels(apiKey);
+
+        if (models.length === 0) {
+            throw new Error('No compatible models available');
+        }
+
+        const prompt = `Tu dois trouver UN SEUL emoji qui correspond le mieux au texte donné.
+
+TEXTE: "${text}"
+
+RÈGLES:
+- Retourne UNIQUEMENT l'emoji, rien d'autre
+- Un seul emoji
+- Choisis l'emoji le plus pertinent et représentatif
+
+Réponse (emoji uniquement):`;
+
+        let lastError = null;
+
+        for (const model of models) {
+            try {
+                const result = await callGeminiAPI(model, prompt, apiKey);
+                const emoji = extractEmoji(result);
+
+                if (emoji) {
+                    return { emoji, model };
+                }
+            } catch (error) {
+                lastError = error;
+
+                if (!error.message.includes('429') && !error.message.includes('quota')) {
+                    throw error;
+                }
+                console.warn(`Model ${model} quota exceeded, trying next...`);
+            }
+        }
+
+        throw lastError || new Error('All models failed');
+    }
+
+    /**
+     * Extract first emoji from text
+     */
+    function extractEmoji(text) {
+        const emojiRegex = /\p{Emoji_Presentation}|\p{Emoji}\uFE0F/gu;
+        const match = text.match(emojiRegex);
+        return match ? match[0] : null;
+    }
+
     // Public API
     return {
         fetchAvailableModels,
         analyzeTextForColoring,
+        getEmojiForText,
         clearCache
     };
 })();
