@@ -254,12 +254,19 @@ body {
 }
 
 .effects-panel {
-    padding: 15px;
+    padding: 20px;
     display: flex;
-    gap: 30px;
-    justify-content: center;
+    flex-direction: column;
+    gap: 20px;
     background: rgba(0, 0, 0, 0.15);
-    /* Slightly darker */
+}
+
+.effects-row {
+    display: flex;
+    gap: 40px;
+    justify-content: center;
+    align-items: flex-start;
+    flex-wrap: wrap;
 }
 
 .effects-category {
@@ -349,14 +356,23 @@ body {
 
 .intensity-control {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 5px;
-    margin-top: 5px;
+    gap: 12px;
+    margin-top: 10px;
 }
 
 .intensity-slider {
-    width: 140px;
+    width: 120px;
+}
+
+/* Actions Row */
+.actions-row {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    flex-wrap: wrap;
+    padding-top: 15px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 /* Action Buttons */
@@ -383,6 +399,27 @@ body {
 
 .action-btn .icon {
     font-size: 1.2rem;
+}
+
+/* Copy Button - Green */
+.copy-btn {
+    background: linear-gradient(45deg, #10b981, #059669);
+    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+}
+
+.copy-btn:hover {
+    box-shadow: 0 8px 25px rgba(16, 185, 129, 0.6);
+}
+
+/* Clear Button - Subtle Red */
+.clear-action-btn {
+    background: linear-gradient(45deg, #6b7280, #4b5563);
+    box-shadow: 0 4px 15px rgba(107, 114, 128, 0.3);
+}
+
+.clear-action-btn:hover {
+    background: linear-gradient(45deg, #ef4444, #dc2626);
+    box-shadow: 0 8px 25px rgba(239, 68, 68, 0.5);
 }
 
 /* Editor Section */
@@ -488,4 +525,228 @@ body {
 
 .effect-btn.active .effect-icon {
     animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* AI Button Special Glow */
+.ai-btn {
+    background: linear-gradient(45deg, #8b5cf6, #06b6d4);
+    box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+}
+
+.ai-btn:hover {
+    box-shadow: 0 8px 25px rgba(139, 92, 246, 0.6);
+}
+
+/* Modal Styles */
+.modal {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal.hidden {
+    display: none;
+}
+
+.modal-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+}
+
+.modal-content {
+    position: relative;
+    width: 90%;
+    max-width: 450px;
+    padding: 0;
+    z-index: 2001;
+    animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px) scale(0.95);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 25px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.modal-header h2 {
+    font-size: 1.4rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.close-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: #fff;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 1.1rem;
+    transition: all 0.2s;
+}
+
+.close-btn:hover {
+    background: rgba(255, 107, 107, 0.3);
+    color: #ff6b6b;
+}
+
+.modal-body {
+    padding: 25px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.form-group label {
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.input-with-toggle {
+    display: flex;
+    gap: 8px;
+}
+
+.input-with-toggle input {
+    flex: 1;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 10px;
+    padding: 12px 15px;
+    color: #fff;
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.input-with-toggle input:focus {
+    border-color: var(--primary-color);
+}
+
+.input-with-toggle input::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.toggle-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 10px;
+    padding: 0 15px;
+    cursor: pointer;
+    font-size: 1.1rem;
+    transition: background 0.2s;
+}
+
+.toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.hint {
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.hint a {
+    color: var(--secondary-color);
+    text-decoration: none;
+}
+
+.hint a:hover {
+    text-decoration: underline;
+}
+
+.slider-row {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.slider-row .slider {
+    flex: 1;
+    width: auto;
+}
+
+.modal-footer {
+    padding: 20px 25px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+}
+
+.primary-btn {
+    width: 100%;
+    justify-content: center;
+    background: linear-gradient(45deg, #8b5cf6, #06b6d4);
+    box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+}
+
+.primary-btn:hover {
+    box-shadow: 0 8px 25px rgba(139, 92, 246, 0.6);
+}
+
+.status-text {
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.status-text.hidden {
+    display: none;
+}
+
+.status-text.loading::before {
+    content: '';
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: var(--secondary-color);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.status-text.success {
+    color: #4ade80;
+}
+
+.status-text.error {
+    color: #f87171;
 }

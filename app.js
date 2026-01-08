@@ -44,10 +44,21 @@ document.addEventListener('DOMContentLoaded', function () {
         copyBtn: document.getElementById('copyBtn'),
         clearBtn: document.getElementById('clearBtn'),
         randomBtn: document.getElementById('randomBtn'),
+        aiColorBtn: document.getElementById('aiColorBtn'),
 
         // Effect Controls (Dynamic now)
         intensitySlider: document.getElementById('effectIntensity'),
-        intensityValue: document.getElementById('intensityValue')
+        intensityValue: document.getElementById('intensityValue'),
+
+        // AI Modal Controls
+        aiModal: document.getElementById('aiModal'),
+        closeAiModalBtn: document.getElementById('closeAiModal'),
+        apiKeyInput: document.getElementById('apiKeyInput'),
+        toggleApiKeyBtn: document.getElementById('toggleApiKey'),
+        densitySlider: document.getElementById('densitySlider'),
+        densityValue: document.getElementById('densityValue'),
+        launchAiBtn: document.getElementById('launchAiBtn'),
+        aiStatus: document.getElementById('aiStatus')
     };
 
     // ============================================
@@ -282,6 +293,104 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ============================================
+    // AI COLORING
+    // ============================================
+
+    function openAiModal() {
+        // Load saved API key
+        const savedKey = localStorage.getItem('gemini_api_key');
+        if (savedKey) controls.apiKeyInput.value = savedKey;
+
+        controls.aiModal.classList.remove('hidden');
+    }
+
+    function closeAiModal() {
+        controls.aiModal.classList.add('hidden');
+        updateAiStatus('', '');
+    }
+
+    function updateAiStatus(message, type) {
+        if (!message) {
+            controls.aiStatus.classList.add('hidden');
+            return;
+        }
+        controls.aiStatus.textContent = message;
+        controls.aiStatus.className = `status-text ${type}`;
+    }
+
+    async function handleAIColoring() {
+        const apiKey = controls.apiKeyInput.value.trim();
+        if (!apiKey) {
+            showToast('Entrez une clé API', true);
+            return;
+        }
+
+        // Save API key
+        localStorage.setItem('gemini_api_key', apiKey);
+
+        const text = editor.textContent.trim();
+        if (!text) {
+            showToast('Aucun texte dans l\'éditeur', true);
+            return;
+        }
+
+        const density = parseInt(controls.densitySlider.value);
+
+        try {
+            updateAiStatus('Analyse en cours...', 'loading');
+            controls.launchAiBtn.disabled = true;
+
+            const result = await window.AIService.analyzeTextForColoring(text, apiKey, density);
+
+            if (result.words.length === 0) {
+                updateAiStatus('Aucun mot identifié', 'error');
+                return;
+            }
+
+            // Apply random effects to each word
+            applyColorToWords(result.words);
+
+            updateAiStatus(`✨ ${result.words.length} mots colorés (${result.model})`, 'success');
+            showToast(`${result.words.length} mots colorés avec succès !`);
+
+        } catch (error) {
+            console.error('AI Coloring error:', error);
+            updateAiStatus(`Erreur: ${error.message}`, 'error');
+            showToast('Erreur lors de l\'analyse', true);
+        } finally {
+            controls.launchAiBtn.disabled = false;
+        }
+    }
+
+    function applyColorToWords(words) {
+        const options = {
+            intensity: parseInt(controls.intensitySlider.value),
+            baseSize: parseInt(controls.fontSizeSlider.value)
+        };
+
+        // Get editor HTML and process
+        let html = editor.innerHTML;
+
+        // Sort words by length (longest first) to avoid partial replacements
+        const sortedWords = [...words].sort((a, b) => b.length - a.length);
+
+        sortedWords.forEach(word => {
+            // Escape special regex characters
+            const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+            // Create regex to match word (not inside HTML tags)
+            const regex = new RegExp(`(?<![<\/\\w])${escapedWord}(?![\\w>])`, 'g');
+
+            html = html.replace(regex, (match) => {
+                const result = window.applyRandomEffects(match, options);
+                return result.html;
+            });
+        });
+
+        editor.innerHTML = html;
+    }
+
+    // ============================================
     // EVENT LISTENERS
     // ============================================
 
@@ -345,6 +454,19 @@ document.addEventListener('DOMContentLoaded', function () {
                 updateEffectUI();
             }
         });
+
+        // AI Modal Events
+        controls.aiColorBtn.addEventListener('click', openAiModal);
+        controls.closeAiModalBtn.addEventListener('click', closeAiModal);
+        controls.aiModal.querySelector('.modal-overlay').addEventListener('click', closeAiModal);
+        controls.toggleApiKeyBtn.addEventListener('click', () => {
+            const input = controls.apiKeyInput;
+            input.type = input.type === 'password' ? 'text' : 'password';
+        });
+        controls.densitySlider.addEventListener('input', function () {
+            controls.densityValue.textContent = this.value + '%';
+        });
+        controls.launchAiBtn.addEventListener('click', handleAIColoring);
 
         editor.addEventListener('keyup', updateFormatButtonStates);
         editor.addEventListener('mouseup', updateFormatButtonStates);
