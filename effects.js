@@ -15,14 +15,14 @@ const EFFECT_CONFIGS = {
             icon: "🌈",
             description: "Colorie chaque caractère avec les couleurs de l'arc-en-ciel",
             decoration: { before: "✨ ", after: " ✨" },
-            colors: ["#ff0000", "#ff7f00", "#ffff00", "#00ff00", "#0099ff", "#6633ff", "#9400d3"]
+            colors: ["#ff4d6d", "#ff8c42", "#ffd000", "#00c896", "#0096c7", "#7b2cbf", "#c026d3"]
         },
         flame: {
             name: "Flamme",
             icon: "🔥",
             description: "Alternance jaune/orange/rouge avec flammes",
             decoration: { before: "🔥 ", after: " 🔥" },
-            colors: ["#ffff00", "#ff7f00", "#ff4500", "#ff0000"]
+            colors: ["#ffe066", "#ffb347", "#ff7f50", "#ff5c5c", "#e53935"]
         },
         flower: {
             name: "Fleur",
@@ -30,7 +30,28 @@ const EFFECT_CONFIGS = {
             description: "Alternance violet/rose/saumon avec fleurs",
             decoration: { before: "🌸 ", after: " 🌺" },
             colors: ["#9400d3", "#ff69b4", "#ff1493", "#fa8072"]
-        }
+        },
+        ocean: {
+            name: "Océan",
+            icon: "🌊",
+            description: "Nuances de bleu profond et turquoise",
+            decoration: { before: "🌊 ", after: " 🐚" },
+            colors: ["#0077b6", "#00b4d8", "#48cae4", "#90e0ef", "#00b4d8", "#0096c7"]
+        },
+        forest: {
+            name: "Forêt",
+            icon: "🌲",
+            description: "Vert émeraude et nuances forestières",
+            decoration: { before: "🌲 ", after: " 🍃" },
+            colors: ["#1b4332", "#2d6a4f", "#40916c", "#52b788", "#74c69d", "#95d5b2"]
+        },
+        pastel: {
+            name: "Pastel",
+            icon: "🦋",
+            description: "Couleurs douces et sucrées",
+            decoration: { before: "", after: "" },
+            colors: ["#ffc8dd", "#ffafcc", "#bde0fe", "#a2d2ff", "#cdb4db", "#e0c3fc"]
+        },
     },
     size: {
         wave: {
