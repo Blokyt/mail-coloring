@@ -58,6 +58,8 @@ document.addEventListener('DOMContentLoaded', function () {
         toggleApiKeyBtn: document.getElementById('toggleApiKey'),
         densitySlider: document.getElementById('densitySlider'),
         densityValue: document.getElementById('densityValue'),
+        emojiDensitySlider: document.getElementById('emojiDensitySlider'),
+        emojiDensityValue: document.getElementById('emojiDensityValue'),
         launchAiBtn: document.getElementById('launchAiBtn'),
         aiStatus: document.getElementById('aiStatus')
     };
@@ -361,24 +363,41 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        const density = parseInt(controls.densitySlider.value);
+        const colorDensity = parseInt(controls.densitySlider.value);
+        const emojiDensity = parseInt(controls.emojiDensitySlider.value);
 
         try {
-            updateAiStatus('Analyse en cours...', 'loading');
             controls.launchAiBtn.disabled = true;
+            let emojiCount = 0;
 
-            const result = await window.AIService.analyzeTextForColoring(text, apiKey, density);
+            // Step 1: Emojis (if density > 0)
+            if (emojiDensity > 0) {
+                updateAiStatus('🥐 Ajout des emojis...', 'loading');
+                try {
+                    const emojiResult = await window.AIService.analyzeTextForEmojis(text, apiKey, emojiDensity);
+                    if (emojiResult.emojis.length > 0) {
+                        applyEmojisToEditor(emojiResult.emojis);
+                        emojiCount = emojiResult.emojis.length;
+                    }
+                } catch (e) {
+                    console.warn('Emoji phase failed:', e);
+                }
+            }
+
+            // Step 2: Coloring
+            updateAiStatus('🎨 Coloration en cours...', 'loading');
+            const result = await window.AIService.analyzeTextForColoring(editor.textContent, apiKey, colorDensity);
 
             if (result.words.length === 0) {
                 updateAiStatus('Aucun mot identifié', 'error');
                 return;
             }
 
-            // Apply random effects to each word
             applyColorToWords(result.words);
 
-            updateAiStatus(`✨ ${result.words.length} mots colorés (${result.model})`, 'success');
-            showToast(`${result.words.length} mots colorés avec succès !`);
+            const emojiMsg = emojiCount > 0 ? ` + ${emojiCount} 🥐` : '';
+            updateAiStatus(`✨ ${result.words.length} mots colorés${emojiMsg} (${result.model})`, 'success');
+            showToast(`${result.words.length} mots colorés${emojiMsg} !`);
 
         } catch (error) {
             console.error('AI Coloring error:', error);
@@ -387,6 +406,25 @@ document.addEventListener('DOMContentLoaded', function () {
         } finally {
             controls.launchAiBtn.disabled = false;
         }
+    }
+
+    function applyEmojisToEditor(emojiItems) {
+        let html = editor.innerHTML;
+
+        const sortedItems = [...emojiItems].sort((a, b) => b.word.length - a.word.length);
+
+        sortedItems.forEach(item => {
+            if (!item.word || !item.emoji) return;
+
+            const escapedWord = item.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(`(${escapedWord})(?![\\w])`, 'i');
+
+            html = html.replace(regex, (match) => {
+                return match + ' ' + item.emoji;
+            });
+        });
+
+        editor.innerHTML = html;
     }
 
     function applyColorToWords(words) {
@@ -418,7 +456,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ============================================
-    // EMOJI AI
+    // EMOJI AI (Individual word)
     // ============================================
 
     async function handleEmojiAdd() {
@@ -439,10 +477,9 @@ document.addEventListener('DOMContentLoaded', function () {
             const result = await window.AIService.getEmojiForText(selectedText, apiKey);
 
             if (result.emoji) {
-                // Insert emoji after the selection
                 const sel = getSelection();
                 if (sel) {
-                    sel.range.collapse(false); // Move to end of selection
+                    sel.range.collapse(false);
                     const emojiNode = document.createTextNode(' ' + result.emoji);
                     sel.range.insertNode(emojiNode);
                     editor.focus();
@@ -533,7 +570,12 @@ document.addEventListener('DOMContentLoaded', function () {
         controls.densitySlider.addEventListener('input', function () {
             controls.densityValue.textContent = this.value + '%';
         });
+        controls.emojiDensitySlider.addEventListener('input', function () {
+            controls.emojiDensityValue.textContent = this.value + '%';
+        });
         controls.launchAiBtn.addEventListener('click', handleAIColoring);
+
+        // Emoji button (individual word)
         controls.emojiBtn.addEventListener('click', handleEmojiAdd);
 
         editor.addEventListener('keyup', updateFormatButtonStates);

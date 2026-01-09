@@ -190,6 +190,67 @@ Réponse (JSON array uniquement):`;
     }
 
     /**
+     * Analyze text and identify words that should get emojis
+     * @param {string} text - Text to analyze
+     * @param {string} apiKey - Google AI API key
+     * @param {number} density - Percentage of words to emojify (0-100)
+     * @returns {Promise<{emojis: {word: string, emoji: string}[], model: string}>}
+     */
+    async function analyzeTextForEmojis(text, apiKey, density = 20) {
+        const models = await fetchAvailableModels(apiKey);
+
+        if (models.length === 0) {
+            throw new Error('No compatible models available');
+        }
+
+        const wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
+        const targetEmojis = Math.max(1, Math.round(wordCount * (density / 100)));
+
+        const prompt = `Identifie ${targetEmojis} mots importants dans ce texte et donne un emoji pertinent pour chacun.
+Retourne UNIQUEMENT un JSON array: [{"word": "soleil", "emoji": "☀️"}, {"word": "fête", "emoji": "🎉"}]
+
+Texte: ${text}
+
+Réponse:`;
+
+        let lastError = null;
+
+        for (const model of models) {
+            try {
+                const result = await callGeminiAPI(model, prompt, apiKey);
+                const emojis = parseEmojisFromResponse(result, text);
+
+                if (emojis.length > 0) {
+                    return { emojis, model };
+                }
+            } catch (error) {
+                lastError = error;
+                if (!error.message.includes('429') && !error.message.includes('quota')) throw error;
+            }
+        }
+
+        throw lastError || new Error('All models failed');
+    }
+
+    /**
+     * Parse emojis from AI response
+     */
+    function parseEmojisFromResponse(response, originalText) {
+        try {
+            const jsonMatch = response.match(/\[[\s\S]*?\]/);
+            if (!jsonMatch) return [];
+
+            const items = JSON.parse(jsonMatch[0]);
+            return items.filter(item =>
+                item && typeof item.word === 'string' &&
+                item.emoji && originalText.includes(item.word)
+            );
+        } catch {
+            return [];
+        }
+    }
+
+    /**
      * Get a relevant emoji for the given text
      * @param {string} text - Text to analyze
      * @param {string} apiKey - Google AI API key
@@ -249,6 +310,7 @@ Réponse (emoji uniquement):`;
     return {
         fetchAvailableModels,
         analyzeTextForColoring,
+        analyzeTextForEmojis,
         getEmojiForText,
         clearCache
     };
