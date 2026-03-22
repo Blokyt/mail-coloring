@@ -69,7 +69,7 @@ export function ToolbarPanel() {
           <button class="btn-icon" onClick={() => { execFormatCommand('italic'); updateBuffer({ italic: !getBuffer().italic }) }}><i>I</i></button>
           <button class="btn-icon" onClick={() => { execFormatCommand('underline'); updateBuffer({ underline: !getBuffer().underline }) }}><u>U</u></button>
           <button class="btn-icon" onClick={() => { execFormatCommand('strikeThrough'); updateBuffer({ strikeThrough: !getBuffer().strikeThrough }) }}><s>S</s></button>
-          <button class="btn-icon" style={{ "font-size": "var(--font-sm)" }} onClick={() => { execFormatCommand('removeFormat'); updateBuffer({ bold: false, italic: false, underline: false, strikeThrough: false, foreColor: '#374151', hiliteColor: '', fontSize: 18, fontFamily: 'Arial' }) }}>X</button>
+          <button class="btn-icon" style={{ "font-size": "var(--font-sm)" }} onClick={() => updateBuffer({ bold: false, italic: false, underline: false, strikeThrough: false, foreColor: '#374151', hiliteColor: '', fontSize: 18, fontFamily: 'Arial' })} title="Reinitialiser le style">X</button>
           <button
             class="btn-icon"
             style={{ "font-size": "var(--font-sm)" }}
