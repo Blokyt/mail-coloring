@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd:*)",
+      "Bash(npm create:*)",
+      "Bash(cp -r \"C:/Users/bloki/Desktop/Programmation/PERSO/mail-coloring-tmp/\"* \"C:/Users/bloki/Desktop/Programmation/PERSO/mail-coloring/\")",
+      "Bash(cp \"C:/Users/bloki/Desktop/Programmation/PERSO/mail-coloring-tmp/.gitignore\" \"C:/Users/bloki/Desktop/Programmation/PERSO/mail-coloring/.gitignore\")",
+      "Bash(rm -rf \"C:/Users/bloki/Desktop/Programmation/PERSO/mail-coloring-tmp\")",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vite:*)",
+      "mcp__plugin_playwright_playwright__browser_navigate",
+      "mcp__plugin_playwright_playwright__browser_take_screenshot",
+      "mcp__plugin_playwright_playwright__browser_click",
+      "mcp__plugin_playwright_playwright__browser_type",
+      "mcp__plugin_playwright_playwright__browser_evaluate",
+      "Bash(npx playwright:*)",
+      "Bash(rm -f *.html *.png)",
+      "Bash(cp \"../logo.png\" .)",
+      "Bash(xargs rm:*)",
+      "Bash(node -e \":*)",
+      "Bash(curl -s http://localhost:5173)",
+      "mcp__claude_ai_Canva__list-brand-kits",
+      "Bash(curl -s \"http://localhost:5173/src/engine/effects.ts\")",
+      "mcp__claude_ai_Canva__generate-design",
+      "Bash(curl -s \"http://localhost:5173/src/components/Editor.tsx\")",
+      "Bash(curl -s \"http://localhost:5173/src/index.tsx\")",
+      "Bash(curl -s \"http://localhost:5173/src/App.tsx\")",
+      "Bash(curl -s \"http://localhost:5173/src/components/EffectsCatalog.tsx\")",
+      "Bash(curl -s \"http://localhost:5173/src/components/ToolbarPanel.tsx\")",
+      "Bash(find /c/Users/bloki/Desktop/Programmation/PERSO/mail-coloring -name *tweaker* -o -name *CssTweaker*)",
+      "Bash(find /c/Users/bloki/Desktop/Programmation/PERSO/mail-coloring -name *.css -o -name *.scss)",
+      "Bash(grep -r \"tweaker-gear\\\\|tweaker-panel\\\\|tweaker-grid\" /c/Users/bloki/Desktop/Programmation/PERSO/mail-coloring/src --include=*.css --include=*.scss --include=*.tsx --include=*.ts)",
+      "mcp__plugin_playwright_playwright__browser_snapshot",
+      "mcp__plugin_playwright_playwright__browser_run_code"
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg);color:var(--soft-black);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+#root{height:100vh;display:flex;flex-direction:column;overflow:hidden}
+::selection{background:rgba(196,181,253,0.4)}
+:focus-visible{outline:var(--border) solid var(--lavender);outline-offset:2px}
+button{font-family:inherit;cursor:pointer}
+*{user-select:none;-webkit-user-select:none}
+.editor{user-select:text;-webkit-user-select:text}
+.editor *{user-select:text;-webkit-user-select:text}
+
+.shape{position:fixed;pointer-events:none;z-index:0}
+.shape-1{width:140px;height:140px;border:var(--border) dashed var(--peach);border-radius:50%;opacity:.15;top:40px;left:30px}
+.shape-2{width:14px;height:14px;background:var(--mint);border-radius:50%;opacity:.2;top:120px;right:80px}
+.shape-3{width:0;height:0;border-left:26px solid transparent;border-right:26px solid transparent;border-bottom:45px solid var(--lavender);opacity:.12;bottom:60px;right:40px}
+.shape-4{width:35px;height:35px;background:var(--peach);transform:rotate(45deg);opacity:.12;top:300px;right:20px}
+.shape-5{width:70px;height:70px;opacity:.1;top:180px;left:20px;background-image:radial-gradient(var(--soft-black) 2px,transparent 2px);background-size:12px 12px}

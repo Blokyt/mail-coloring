@@ -1,0 +1,42 @@
+/* ══ Panneaux avancés (f(x) + tracé) ══
+   RÈGLE : uniquement les tokens de theme.css
+   Patterns identiques à .btn / .btn-compact / .slider-group
+   ══════════════════════════════════════════ */
+
+/* ── Tracé libre ── */
+.shape-canvas-container{display:flex;flex-direction:column;gap:12px}
+.shape-canvas{width:100%;height:240px;background:var(--bg);border-radius:var(--radius-md);cursor:crosshair;display:block;border:var(--border) solid var(--soft-black);box-shadow:var(--shadow-x) var(--shadow-y) 0 var(--shadow-color)}
+.shape-canvas-actions{display:flex;gap:10px}
+
+/* ── f(x) container ── */
+.math-container{display:flex;flex-direction:column;gap:16px}
+
+/* Formule a·f(b·x) — affichée comme un titre */
+.math-formula{font-family:'Fredoka',sans-serif;font-size:var(--font-lg);font-weight:700;color:var(--soft-black);text-align:center;background:var(--bg);border:var(--border) solid var(--separator);border-radius:var(--radius-md);padding:10px 20px}
+.math-formula-a,.math-formula-b,.math-formula-c{color:var(--lavender);font-size:22px}
+.math-formula-f{color:var(--peach);font-size:22px}
+.math-formula-paren,.math-formula-dot{color:var(--muted);font-weight:400}
+
+/* Preview texte live — même rendu que .catalog-preview-item */
+.math-text-preview{background:var(--white);border:var(--border) solid var(--soft-black);border-radius:var(--radius-md);box-shadow:var(--shadow-x) var(--shadow-y) 0 var(--shadow-color);padding:16px 24px;text-align:center;min-height:60px;font-family:'Segoe UI',Arial;font-size:16px;line-height:1.5;overflow:hidden;white-space:nowrap}
+
+/* Input f(x) = ... — même pattern que .font-select */
+.math-input-row{display:flex;align-items:center;gap:10px}
+.math-input-prefix{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-md);color:var(--peach);white-space:nowrap}
+.math-input{font-family:'Fredoka',sans-serif;font-size:var(--font-md);font-weight:600;padding:8px 14px;background:var(--white);color:var(--soft-black);border:var(--border) solid var(--soft-black);border-radius:var(--radius-sm);outline:none;flex:1;box-shadow:var(--shadow-x) var(--shadow-y) 0 var(--shadow-color)}
+.math-input:focus{box-shadow:var(--shadow-x) var(--shadow-y) 0 var(--lavender)}
+
+/* Boutons fonctions — même pattern que .side-tag */
+.math-btn-grid{display:flex;flex-wrap:wrap;gap:8px}
+.math-btn{font-family:'Fredoka',sans-serif;font-weight:600;font-size:var(--font-sm);padding:6px 14px;border:var(--border) solid var(--soft-black);border-radius:var(--radius-sm);cursor:pointer;user-select:none;transition:transform .1s,box-shadow .1s;box-shadow:var(--shadow-x) var(--shadow-y) 0 var(--shadow-color);line-height:1}
+.math-btn:hover{transform:translate(-2px,-2px);box-shadow:calc(var(--shadow-x) + 2px) calc(var(--shadow-y) + 2px) 0 var(--shadow-color)}
+.math-btn:active{transform:translate(0,0);box-shadow:none}
+.math-btn-func{background:var(--lavender);color:var(--soft-black)}
+.math-btn-op{background:var(--white);color:var(--soft-black)}
+
+/* Sliders a et b — même pattern que .slider-group dans la toolbar */
+.math-params{display:flex;flex-direction:column;gap:10px}
+.math-param{display:flex;align-items:center;gap:8px;flex:1}
+.math-param-name{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-lg);color:var(--lavender);min-width:18px;text-align:center}
+.math-param input[type="range"]{flex:1;width:auto}
+.math-param-val{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-sm);background:var(--lavender);border:var(--border) solid var(--soft-black);border-radius:var(--radius-sm);padding:2px 8px;min-width:36px;text-align:center}

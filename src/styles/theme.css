@@ -1,0 +1,47 @@
+/* ══ DESIGN TOKENS — Tout est contrôlable ici ══ */
+:root {
+  /* Palette */
+  --lavender: #c4b5fd;
+  --peach: #fdba74;
+  --mint: #86efac;
+  --soft-black: #374151;
+  --white: #ffffff;
+  --bg: #faf9f7;
+  --muted: #9ca3af;
+  --separator: #e5e7eb;
+
+  /* Logo */
+  --logo-size: 500px;
+  --logo-opacity: 0.06;
+
+  /* Bordures — UNE SEULE épaisseur pour tout */
+  --border: 3px;
+
+  /* Rayons — 3 niveaux seulement */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+
+  /* Ombres offset — uniformes */
+  --shadow-x: 5px;
+  --shadow-y: 5px;
+  --shadow-color: var(--lavender);
+
+  /* Tailles éléments */
+  --btn-size: 38px;
+  --swatch-size: 28px;
+  --side-width-left: 120px;
+  --side-width-right: 120px;
+
+  /* Polices — 4 niveaux */
+  --font-xs: 9px;     /* labels sidebar */
+  --font-sm: 12px;    /* boutons sidebar, labels */
+  --font-md: 14px;    /* boutons principaux, UI */
+  --font-lg: 18px;    /* titres, brand */
+  --font-editor: 18px;
+
+  /* Espacement toolbar */
+  --toolbar-pad: 6px;
+  --header-pad: 8px;
+
+}
