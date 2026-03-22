@@ -1,5 +1,6 @@
 import { onMount, onCleanup, createSignal } from 'solid-js'
-import { pushUndo, undo, pushRedo, redo } from '../stores/editor'
+import { pushUndo, undo, pushRedo, redo, activeColorEffect, activeSizeEffect, intensity, baseSize } from '../stores/editor'
+import { COLOR_EFFECTS, SIZE_EFFECTS } from '../engine/effects'
 import { getBuffer } from './Header'
 
 let editorEl: HTMLDivElement | undefined
@@ -85,6 +86,57 @@ export function applyInlineStyle(prop: string, value: string) {
   } else if (prop === 'fontFamily') document.execCommand('fontName', false, value)
   editorEl.focus()
   saveSelection()
+}
+
+/**
+ * Wrappe la selection dans un <a href="..."> sans changer le visuel.
+ * Le lien herite du style existant (color, text-decoration inherit).
+ */
+export function applyLink(url: string) {
+  if (!editorEl || !url) return
+  restoreSelection()
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return
+  pushUndo(editorEl.innerHTML)
+
+  const range = sel.getRangeAt(0)
+  const contents = range.extractContents()
+
+  const a = document.createElement('a')
+  a.href = url
+  a.target = '_blank'
+  // Inherit tout le style du texte — pas de changement visuel
+  a.style.color = 'inherit'
+  a.style.textDecoration = 'inherit'
+  a.appendChild(contents)
+
+  range.insertNode(a)
+
+  const newRange = document.createRange()
+  newRange.setStartAfter(a)
+  newRange.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(newRange)
+  editorEl.focus()
+  saveSelection()
+}
+
+/** Retire le lien du <a> le plus proche du curseur */
+export function removeLink() {
+  if (!editorEl) return
+  restoreSelection()
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0) return
+  const node = sel.anchorNode
+  const a = node?.parentElement?.closest('a') || (node as Element)?.closest?.('a')
+  if (!a || !editorEl.contains(a)) return
+  pushUndo(editorEl.innerHTML)
+
+  // Remplacer le <a> par son contenu
+  const parent = a.parentNode!
+  while (a.firstChild) parent.insertBefore(a.firstChild, a)
+  a.remove()
+  editorEl.focus()
 }
 
 export function execFormatCommand(cmd: string) {
@@ -388,6 +440,81 @@ export function Editor() {
         newRange.collapse(true)
         sel.removeAllRanges()
         sel.addRange(newRange)
+      })
+    }
+
+    /* ── Double-clic = peindre le mot avec hotbar + effets armes ── */
+    if (editorEl) {
+      editorEl.addEventListener('dblclick', (e) => {
+        // Le double-clic natif selectionne le mot — on utilise cette selection
+        const sel = window.getSelection()
+        if (!sel || sel.isCollapsed || !sel.rangeCount) return
+        const range = sel.getRangeAt(0)
+        if (!editorEl!.contains(range.commonAncestorContainer)) return
+
+        const word = sel.toString()
+        if (!word.trim()) return
+
+        pushUndo(editorEl!.innerHTML)
+
+        const buf = getBuffer()
+        const colorId = activeColorEffect()
+        const sizeId = activeSizeEffect()
+        const colorEffect = colorId ? COLOR_EFFECTS[colorId] : null
+        const sizeEffect = sizeId ? SIZE_EFFECTS[sizeId] : null
+        const opts = { intensity: intensity(), baseSize: baseSize() }
+
+        // Extraire le contenu selectionne
+        const extracted = range.extractContents()
+        const chars = [...(extracted.textContent || '')]
+        const nonSpaceCount = chars.filter(c => c !== ' ').length
+
+        const frag = document.createDocumentFragment()
+        let charIdx = 0
+        for (const char of chars) {
+          if (char === ' ' || char === '\n') {
+            frag.appendChild(document.createTextNode(char))
+            continue
+          }
+
+          const deco: string[] = []
+          if (buf.underline) deco.push('underline')
+          if (buf.strikeThrough) deco.push('line-through')
+
+          const color = colorEffect
+            ? colorEffect.colors[charIdx % colorEffect.colors.length]
+            : buf.foreColor
+
+          let fontSize = buf.fontSize
+          if (sizeEffect) {
+            const offset = sizeEffect.getOffset(charIdx, nonSpaceCount, opts)
+            fontSize = Math.max(8, Math.round(opts.baseSize + offset))
+          }
+
+          const styleParts = [
+            `color:${color}`,
+            `font-size:${fontSize}px`,
+            `font-family:${buf.fontFamily}`,
+            `font-weight:${buf.bold ? '700' : '400'}`,
+            `font-style:${buf.italic ? 'italic' : 'normal'}`,
+            `text-decoration:${deco.length ? deco.join(' ') : 'none'}`,
+          ]
+          if (buf.hiliteColor) styleParts.push(`background-color:${buf.hiliteColor}`)
+
+          const span = document.createElement('span')
+          span.setAttribute('style', styleParts.join(';'))
+          span.textContent = char
+          frag.appendChild(span)
+          charIdx++
+        }
+
+        range.insertNode(frag)
+
+        // Nettoyer les elements vides
+        editorEl!.querySelectorAll('span:empty, font:empty, b:empty, i:empty, u:empty').forEach(el => el.remove())
+
+        // Deselectionner
+        sel.removeAllRanges()
       })
     }
 

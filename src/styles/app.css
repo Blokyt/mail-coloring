@@ -37,6 +37,9 @@
 .status-fmt{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-sm);width:24px;height:24px;border:var(--border) solid var(--separator);border-radius:4px;background:var(--white);color:var(--soft-black);display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer;transition:all .1s;user-select:none}
 .status-fmt:hover{border-color:var(--soft-black)}
 .status-fmt.active{background:var(--lavender);border-color:var(--soft-black)}
+.status-clear-bg{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-xs);width:18px;height:18px;border:var(--border) solid var(--soft-black);border-radius:var(--radius-sm);background:var(--white);color:var(--soft-black);display:inline-flex;align-items:center;justify-content:center;padding:0;cursor:pointer;line-height:1;transition:transform .1s,box-shadow .1s;box-shadow:var(--shadow-x) var(--shadow-y) 0 var(--shadow-color)}
+.status-clear-bg:hover{transform:translate(-2px,-2px);box-shadow:calc(var(--shadow-x) + 2px) calc(var(--shadow-y) + 2px) 0 var(--shadow-color)}
+.status-clear-bg:active{transform:translate(0,0);box-shadow:none}
 
 /* ── Main layout ── */
 .main-layout{flex:1;display:flex;min-height:0;position:relative;z-index:1}
@@ -55,6 +58,7 @@
 .side-tag:hover{transform:translate(-2px,-2px);box-shadow:var(--shadow-x) var(--shadow-y) 0 var(--shadow-color)}
 .side-tag:active{transform:translate(0,0);box-shadow:none}
 .side-tag.active{background:var(--lavender)}
+.side-tag.armed{border-left:5px solid var(--peach);background:var(--white)}
 .side-tag.recent{opacity:.7}
 
 /* ── Centre ── */

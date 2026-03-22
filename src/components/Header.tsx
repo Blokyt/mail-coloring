@@ -57,7 +57,7 @@ function rgbToHex(rgb: string): string {
 }
 
 /** Lit le style complet d'un element DOM et le copie dans le buffer (eyedropper) */
-function pickStyleFromElement(el: Element) {
+export function pickStyleFromElement(el: Element) {
   const cs = window.getComputedStyle(el)
   setStyleBuffer({
     fontFamily: cs.fontFamily.replace(/"/g, ''),
@@ -82,22 +82,7 @@ export function Header() {
     return !!c && c !== 'transparent' && c !== 'rgba(0, 0, 0, 0)' && c !== ''
   }
 
-  // Clic molette sur l'editeur = eyedropper
-  onMount(() => {
-    const editor = getEditorEl()
-    const handleMiddleClick = (e: MouseEvent) => {
-      if (e.button !== 1) return // seulement clic molette
-      e.preventDefault()
-      const target = e.target as Element
-      if (target && editor?.contains(target)) {
-        // Trouver l'element le plus precis (le span, pas l'editeur)
-        const el = target.closest('span[style], font[style], font[color], font[face], b, i, u, s') || target
-        pickStyleFromElement(el)
-      }
-    }
-    document.addEventListener('mousedown', handleMiddleClick)
-    onCleanup(() => document.removeEventListener('mousedown', handleMiddleClick))
-  })
+  onMount(() => {})
 
   // Toggle un format dans le buffer + applique a la selection
   const toggleFormat = (cmd: string, field: keyof StyleBuffer) => {
@@ -198,6 +183,13 @@ export function Header() {
               title="Couleur de fond"
             />
           </div>
+          {hasBg() && (
+            <button
+              class="status-clear-bg"
+              onClick={() => updateBuffer({ hiliteColor: '' })}
+              title="Retirer le fond"
+            >x</button>
+          )}
         </div>
 
         <div class="status-sep" />

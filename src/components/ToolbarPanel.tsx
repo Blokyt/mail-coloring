@@ -3,11 +3,12 @@ import { VENETIAN_PALETTE } from '../data/colors'
 import { baseSize, setBaseSize, intensity, setIntensity } from '../stores/editor'
 // FontPicker handles font selection and favorites
 import { sizeFavorites, addSizeFavorite, removeSizeFavorite } from '../stores/favorites'
-import { applyInlineStyle, execFormatCommand } from './Editor'
+import { applyInlineStyle, execFormatCommand, applyLink, removeLink, getSelectedText } from './Editor'
 import { updateBuffer, getBuffer } from './Header'
 import { EffectsCatalog } from './EffectsCatalog'
 import type { CatalogTab } from './EffectsCatalog'
 import { FontPicker } from './FontPicker'
+import { showToast } from './Toast'
 
 const CUSTOM_COLORS_KEY = 'artlequin_custom_colors'
 
@@ -23,6 +24,11 @@ export function ToolbarPanel() {
   const [catalogOpen, setCatalogOpen] = createSignal(false)
   const [catalogTab, setCatalogTab] = createSignal<CatalogTab>('couleur')
   const [customColors, setCustomColors] = createSignal<string[]>(loadCustomColors())
+
+  // Modale lien
+  const [linkOpen, setLinkOpen] = createSignal(false)
+  const [linkUrl, setLinkUrl] = createSignal('')
+  let linkInputRef: HTMLInputElement | undefined
 
   const applyColor = (color: string) => {
     if (colorMode() === 'text') {
@@ -64,6 +70,18 @@ export function ToolbarPanel() {
           <button class="btn-icon" onClick={() => { execFormatCommand('underline'); updateBuffer({ underline: !getBuffer().underline }) }}><u>U</u></button>
           <button class="btn-icon" onClick={() => { execFormatCommand('strikeThrough'); updateBuffer({ strikeThrough: !getBuffer().strikeThrough }) }}><s>S</s></button>
           <button class="btn-icon" style={{ "font-size": "var(--font-sm)" }} onClick={() => { execFormatCommand('removeFormat'); updateBuffer({ bold: false, italic: false, underline: false, strikeThrough: false, foreColor: '#374151', hiliteColor: '', fontSize: 18, fontFamily: 'Arial' }) }}>X</button>
+          <button
+            class="btn-icon"
+            style={{ "font-size": "var(--font-sm)" }}
+            title="Ajouter un lien (selectionnez du texte)"
+            onClick={() => {
+              const text = getSelectedText()
+              if (!text) { showToast('Selectionnez du texte', true); return }
+              setLinkUrl('https://')
+              setLinkOpen(true)
+              requestAnimationFrame(() => { linkInputRef?.focus(); linkInputRef?.select() })
+            }}
+          >🔗</button>
           <div class="separator" />
           <div class="toggle-group">
             <button class={`toggle-btn ${colorMode() === 'text' ? 'active' : ''}`} onClick={() => setColorMode('text')}>Texte</button>
@@ -125,6 +143,30 @@ export function ToolbarPanel() {
       </div>
 
       <EffectsCatalog open={catalogOpen()} onClose={() => setCatalogOpen(false)} initialTab={catalogTab()} />
+
+      {/* Modale lien */}
+      <Show when={linkOpen()}>
+        <div class="catalog-overlay" onClick={() => setLinkOpen(false)} />
+        <div class="naming-modal" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', "z-index": '301' }}>
+          <span class="naming-title">Ajouter un lien</span>
+          <input
+            ref={linkInputRef}
+            class="naming-input"
+            type="url"
+            value={linkUrl()}
+            onInput={(e) => setLinkUrl(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { applyLink(linkUrl()); setLinkOpen(false) }
+              if (e.key === 'Escape') setLinkOpen(false)
+            }}
+            placeholder="https://..."
+          />
+          <div class="naming-actions">
+            <button class="btn btn-lavender" onClick={() => { applyLink(linkUrl()); setLinkOpen(false) }}>Valider</button>
+            <button class="btn" onClick={() => setLinkOpen(false)}>Annuler</button>
+          </div>
+        </div>
+      </Show>
     </>
   )
 }
