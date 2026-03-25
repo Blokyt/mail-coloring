@@ -36,7 +36,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   { id: 'disarm', module: 'Mode arme', title: 'Desarmer', description: 'Pour desarmer un effet, recliquez dessus dans le panneau (la bordure orange disparait). Essayez maintenant !', targetSelector: '.side-panel-left', position: 'right', action: 'click' },
 
   // Module D — Toolbar
-  { id: 'toolbar-format', module: 'Toolbar', title: 'Gras, Italique, Souligne...', description: 'Ces boutons changent le style du buffer : les prochains caracteres tapes auront ce formatage.', targetSelector: '.toolbar-row', position: 'bottom', action: 'none' },
+  { id: 'toolbar-format', module: 'Toolbar', title: 'La barre de formatage', description: 'B, I, U, S changent le style du buffer. Le double-clic sur un mot applique TOUJOURS le style du buffer (police, taille, couleur, gras...) meme sans effet arme. Les effets armes s\'ajoutent EN PLUS du buffer.', targetSelector: '.toolbar-row', position: 'bottom', action: 'none' },
   { id: 'toolbar-colors', module: 'Toolbar', title: 'Palette de couleurs', description: 'Cliquez sur une couleur pour l\'appliquer au texte selectionne. Le toggle Texte/Fond change entre couleur du texte et surlignage.', targetSelector: '.swatches', position: 'bottom', action: 'none' },
   { id: 'toolbar-font', module: 'Toolbar', title: 'Choix de police', description: 'Selectionnez une police parmi les categories. Cliquez sur l\'etoile pour la mettre en favori.', targetSelector: '.font-picker', position: 'bottom', action: 'none' },
   { id: 'toolbar-size', module: 'Toolbar', title: 'Taille du texte', description: 'Le slider ajuste la taille de base. Le bouton "+" ajoute la taille actuelle a vos favoris.', targetSelector: '.slider-group', position: 'bottom', action: 'none' },

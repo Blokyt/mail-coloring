@@ -5,7 +5,7 @@ import {
   nextStep, prevStep, skipTutorial,
 } from '../stores/tutorial'
 import { isAdmin } from '../stores/admin'
-import { adminData, adminSetTutorialPositions, saveAdminData } from '../stores/admin-data'
+import { adminData, adminSetTutorialPositions, adminSetTutorialText, saveAdminData } from '../stores/admin-data'
 import '../styles/tutorial.css'
 
 /* ── Positions sauvegardees (admin-data.json) ── */
@@ -27,6 +27,18 @@ export function TutorialOverlay() {
   const total = TUTORIAL_STEPS.length
   const progress = () => `${currentStep() + 1} / ${total}`
   const module = () => step()?.module ?? ''
+  // Textes avec overrides admin
+  const stepTitle = () => {
+    const s = step(); if (!s) return ''
+    return adminData().tutorialTexts?.[s.id]?.title ?? s.title
+  }
+  const stepDesc = () => {
+    const s = step(); if (!s) return ''
+    return adminData().tutorialTexts?.[s.id]?.description ?? s.description
+  }
+  const [editingText, setEditingText] = createSignal(false)
+  const [editTitle, setEditTitle] = createSignal('')
+  const [editDesc, setEditDesc] = createSignal('')
 
   function measure() {
     const s = step()
@@ -219,8 +231,24 @@ export function TutorialOverlay() {
           }}
         >
           <div class="tuto-module">{module()}</div>
-          <div class="tuto-title">{step()?.title}</div>
-          <div class="tuto-desc">{step()?.description}</div>
+          <Show when={!editingText()}>
+            <div class="tuto-title">{stepTitle()}</div>
+            <div class="tuto-desc">{stepDesc()}</div>
+          </Show>
+          <Show when={editingText()}>
+            <input class="naming-input tuto-edit-input" value={editTitle()} onInput={(e) => setEditTitle(e.currentTarget.value)} placeholder="Titre" />
+            <textarea class="naming-input tuto-edit-textarea" value={editDesc()} onInput={(e) => setEditDesc(e.currentTarget.value)} placeholder="Description" rows={3} />
+            <div style={{ display: 'flex', gap: '6px', "margin-bottom": '8px' }}>
+              <button class="btn btn-lavender tuto-btn" onClick={async () => {
+                const s = step(); if (!s) return
+                adminSetTutorialText(s.id, { title: editTitle(), description: editDesc() })
+                await saveAdminData()
+                setEditingText(false)
+                setDirty(true)
+              }}>OK</button>
+              <button class="btn tuto-btn" onClick={() => setEditingText(false)}>Annuler</button>
+            </div>
+          </Show>
           <div class="tuto-footer">
             <span class="tuto-progress">{progress()}</span>
             <div class="tuto-actions">
@@ -235,9 +263,10 @@ export function TutorialOverlay() {
           </div>
           <Show when={isAdmin()}>
             <div class="tuto-admin-bar">
-              <span class="tuto-admin-hint">Admin : glisser la bulle ou le spotlight</span>
+              <span class="tuto-admin-hint">Drag bulle/spot</span>
+              <button class="btn tuto-btn" onClick={() => { setEditTitle(stepTitle()); setEditDesc(stepDesc()); setEditingText(true) }}>Editer texte</button>
               <Show when={dirty()}>
-                <button class="btn tuto-btn" onClick={saveCurrentPos}>Sauver position</button>
+                <button class="btn tuto-btn" onClick={saveCurrentPos}>Sauver pos</button>
               </Show>
               <button class="tuto-skip" onClick={resetCurrentPos}>Reset</button>
             </div>

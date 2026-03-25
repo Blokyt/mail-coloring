@@ -25,6 +25,9 @@
 /* ── Admin drag mode ── */
 .tuto-draggable{cursor:grab}
 .tuto-draggable:active{cursor:grabbing}
+.tuto-spotlight.tuto-draggable{pointer-events:auto;box-shadow:0 0 0 3px var(--peach),0 0 20px rgba(253,186,116,0.4)}
+.tuto-edit-input{width:100%;margin-bottom:6px;font-size:var(--font-md) !important}
+.tuto-edit-textarea{width:100%;margin-bottom:6px;font-size:var(--font-sm) !important;font-family:'Fredoka',sans-serif;resize:vertical;min-height:60px}
 .tuto-admin-bar{display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:10px;border-top:2px dashed var(--peach);flex-wrap:wrap}
 .tuto-admin-hint{font-family:'Fredoka',sans-serif;font-weight:600;font-size:var(--font-xs);color:var(--peach);flex:1}
 

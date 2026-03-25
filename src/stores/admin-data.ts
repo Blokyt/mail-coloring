@@ -13,12 +13,18 @@ export interface AdminEmoji {
   label: string
 }
 
+export interface TutorialTextOverride {
+  title?: string
+  description?: string
+}
+
 export interface AdminData {
-  colorEffects: Record<string, AdminColorEffect>   // id -> {name, colors}
-  sizeEffectNames: Record<string, string>           // id -> display name
-  emojis: AdminEmoji[]                              // custom default emojis added via admin
-  tutorialPositions: Record<string, any>            // step id -> position data
-  css: Record<string, string | number>              // CSS variable overrides
+  colorEffects: Record<string, AdminColorEffect>
+  sizeEffectNames: Record<string, string>
+  emojis: AdminEmoji[]
+  tutorialPositions: Record<string, any>
+  tutorialTexts: Record<string, TutorialTextOverride>
+  css: Record<string, string | number>
 }
 
 const EMPTY: AdminData = {
@@ -26,6 +32,7 @@ const EMPTY: AdminData = {
   sizeEffectNames: {},
   emojis: [],
   tutorialPositions: {},
+  tutorialTexts: {},
   css: {},
 }
 
@@ -110,6 +117,12 @@ export function adminUpdateEmoji(id: string, updates: Partial<AdminEmoji>) {
 
 export function adminSetTutorialPositions(positions: Record<string, any>) {
   setAdminData(d => ({ ...d, tutorialPositions: positions }))
+}
+
+/* ── Mutations — Tutorial Texts ── */
+
+export function adminSetTutorialText(stepId: string, text: TutorialTextOverride) {
+  setAdminData(d => ({ ...d, tutorialTexts: { ...d.tutorialTexts, [stepId]: text } }))
 }
 
 /* ── Mutations — CSS ── */
