@@ -1,5 +1,6 @@
 import { createSignal } from 'solid-js'
 import { DEFAULT_EMOJIS, type EmojiDef } from '../data/emojis'
+import { adminData } from './admin-data'
 
 // ── Types ──
 
@@ -44,7 +45,10 @@ function savePerso(entries: EmojiEntry[]) {
 // ── Getters ──
 
 export function getBaseEmojis(): EmojiEntry[] {
-  return DEFAULT_EMOJIS.map(e => ({ ...e, source: 'base' as const }))
+  const base = DEFAULT_EMOJIS.map(e => ({ ...e, source: 'base' as const }))
+  // Fusionner les emojis ajoutes par admin
+  const admin = adminData().emojis.map(e => ({ ...e, source: 'base' as const }))
+  return [...base, ...admin]
 }
 
 export function getPersoEmojis(): EmojiEntry[] {

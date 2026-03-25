@@ -5,19 +5,15 @@ import {
   nextStep, prevStep, skipTutorial,
 } from '../stores/tutorial'
 import { isAdmin } from '../stores/admin'
+import { adminData, adminSetTutorialPositions, saveAdminData } from '../stores/admin-data'
 import '../styles/tutorial.css'
 
-/* ── Positions sauvegardees (admin) ── */
-const POS_KEY = 'artlequin_tutorial_positions'
+/* ── Positions sauvegardees (admin-data.json) ── */
 
 type SavedPos = { bubbleTop: number; bubbleLeft: number; spotTop: number; spotLeft: number; spotW: number; spotH: number }
 
 function loadPositions(): Record<string, SavedPos> {
-  try { return JSON.parse(localStorage.getItem(POS_KEY) || '{}') } catch { return {} }
-}
-
-function savePositions(data: Record<string, SavedPos>) {
-  localStorage.setItem(POS_KEY, JSON.stringify(data))
+  return (adminData().tutorialPositions ?? {}) as Record<string, SavedPos>
 }
 
 export function TutorialOverlay() {
@@ -161,26 +157,28 @@ export function TutorialOverlay() {
     })
   })
 
-  function saveCurrentPos() {
+  async function saveCurrentPos() {
     const s = step()
     if (!s) return
-    const positions = loadPositions()
+    const positions = { ...loadPositions() }
     const sr = spotRect()
     const bp = bubblePos()
     positions[s.id] = {
       bubbleTop: bp.top, bubbleLeft: bp.left,
       spotTop: sr.top, spotLeft: sr.left, spotW: sr.width, spotH: sr.height,
     }
-    savePositions(positions)
+    adminSetTutorialPositions(positions)
+    await saveAdminData()
     setDirty(false)
   }
 
-  function resetCurrentPos() {
+  async function resetCurrentPos() {
     const s = step()
     if (!s) return
-    const positions = loadPositions()
+    const positions = { ...loadPositions() }
     delete positions[s.id]
-    savePositions(positions)
+    adminSetTutorialPositions(positions)
+    await saveAdminData()
     measure()
   }
 

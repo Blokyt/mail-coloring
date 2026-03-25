@@ -1,4 +1,4 @@
-import { createSignal, onMount, onCleanup, Show } from 'solid-js'
+import { createSignal, Show } from 'solid-js'
 import { getEditorEl, getAllEditorHtml, getAllEditorText, applyInlineStyle, execFormatCommand } from './Editor'
 import { undo, pushRedo, redo, pushUndo } from '../stores/editor'
 import { isAdmin, toggleAdmin } from '../stores/admin'
@@ -83,8 +83,6 @@ export function Header() {
     const c = s().hiliteColor
     return !!c && c !== 'transparent' && c !== 'rgba(0, 0, 0, 0)' && c !== ''
   }
-
-  onMount(() => {})
 
   // Toggle un format dans le buffer + applique a la selection
   const toggleFormat = (cmd: string, field: keyof StyleBuffer) => {

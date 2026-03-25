@@ -18,17 +18,14 @@ import { Modal } from './Modal'
 import '../styles/catalog.css'
 import '../styles/effects.css'
 
+import { SIZE_ACCENTS } from '../data/accents'
+
 export type CatalogTab = 'base' | 'online' | 'perso' | 'creer'
 
 interface Props {
   open: boolean
   onClose: () => void
   initialTab?: CatalogTab
-}
-
-const SIZE_ACCENT_COLORS: Record<string, string> = {
-  montee: '#86efac', montee_exp: '#2d6a4f', descente: '#f472b6', descente_exp: '#c42b45',
-  arche: '#c4b5fd', impulsion: '#fdba74', vague: '#0096c7', rebond: '#a855f7',
 }
 
 /** Section pliable reutilisable */
@@ -81,7 +78,7 @@ function SizeEffectCard(props: { id: string; name: string }) {
   const fav = () => isFavorite(props.id, 'base')
   const se = SIZE_EFFECTS[props.id]
   const path = () => se ? sparklineFromFn((i) => se.getOffset(i)) : ''
-  const accent = () => SIZE_ACCENT_COLORS[props.id] ?? 'var(--lavender)'
+  const accent = () => SIZE_ACCENTS[props.id] ?? 'var(--lavender)'
 
   return (
     <div class="catalog-card">

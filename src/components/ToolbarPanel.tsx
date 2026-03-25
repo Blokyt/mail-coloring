@@ -24,7 +24,7 @@ function loadCustomColors(): string[] {
 export function ToolbarPanel() {
   const [colorMode, setColorMode] = createSignal<'text' | 'bg'>('text')
   const [catalogOpen, setCatalogOpen] = createSignal(false)
-  const [catalogTab, setCatalogTab] = createSignal<CatalogTab>('couleur')
+  const [catalogTab, setCatalogTab] = createSignal<CatalogTab>('base')
   const [customColors, setCustomColors] = createSignal<string[]>(loadCustomColors())
 
   // Modale lien

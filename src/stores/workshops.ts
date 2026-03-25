@@ -1,6 +1,7 @@
 import { createSignal } from 'solid-js'
-import { COLOR_EFFECTS, SIZE_EFFECTS } from '../engine/effects'
+import { COLOR_EFFECTS, SIZE_EFFECTS, getEffectiveColorEffects } from '../engine/effects'
 import type { ComposedEffectData } from '../engine/effects'
+import { adminData } from './admin-data'
 
 // ── Types ──
 
@@ -117,7 +118,10 @@ function saveHistory(hist: WorkshopEffect[]) {
 
 export function getBaseEffects(): WorkshopEffect[] {
   const favs = baseFavIds()
-  const colors: WorkshopEffect[] = Object.entries(COLOR_EFFECTS).map(([id, e]) => ({
+  const ad = adminData()
+  // Effets couleur : merge hardcoded + overrides admin
+  const effectiveColors = getEffectiveColorEffects(ad.colorEffects)
+  const colors: WorkshopEffect[] = Object.entries(effectiveColors).map(([id, e]) => ({
     id,
     type: 'color' as const,
     label: e.name,
@@ -125,10 +129,11 @@ export function getBaseEffects(): WorkshopEffect[] {
     colors: e.colors,
     isFavorite: favs.has(id),
   }))
+  // Effets taille : noms overrides par admin
   const sizes: WorkshopEffect[] = Object.entries(SIZE_EFFECTS).map(([id, e]) => ({
     id,
     type: 'size' as const,
-    label: e.name,
+    label: ad.sizeEffectNames[id] ?? e.name,
     source: 'base' as const,
     sizeKey: id,
     isFavorite: favs.has(id),

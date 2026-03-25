@@ -119,7 +119,7 @@ export function AdminPanel() {
         </button>
       </Show>
 
-      <Modal open={open()} onClose={() => setOpen(false)} title="Panneau Admin" description="Modifier les effets, emojis et parametres par defaut" size="lg">
+      <Modal open={open()} onClose={() => setOpen(false)} title="Panneau Admin" description="Modifier les effets, emojis et parametres par defaut" size="lg" zIndex={250}>
         <div class="admin-tabs">
           <button class={`catalog-tab ${tab() === 'colors' ? 'active' : ''}`} onClick={() => setTab('colors')}>Effets couleur</button>
           <button class={`catalog-tab ${tab() === 'emojis' ? 'active' : ''}`} onClick={() => setTab('emojis')}>Emojis</button>
