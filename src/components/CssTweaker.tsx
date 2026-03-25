@@ -1,5 +1,6 @@
 import { createSignal, For, Show, onMount } from 'solid-js'
 import { showToast } from './Toast'
+import { adminData, adminSetCss, saveAdminData } from '../stores/admin-data'
 
 /* ══════════════════════════════════════════
    Types
@@ -158,8 +159,14 @@ export function CssTweaker() {
       }
     } catch { /* ignore */ }
 
-    // Charger préférences perso (priorité sur defaults)
+    // Charger préférences : defaults < admin overrides < perso localStorage
     let finalValues = { ...projectDefaults() }
+    // Admin CSS overrides
+    const adminCss = adminData().css
+    if (adminCss && Object.keys(adminCss).length > 0) {
+      finalValues = { ...finalValues, ...adminCss }
+    }
+    // Personal overrides (highest priority)
     try {
       const raw = localStorage.getItem(LOCAL_KEY)
       if (raw) {
@@ -207,11 +214,15 @@ export function CssTweaker() {
 
   const handleSaveForAll = async () => {
     try {
+      // Sauvegarder dans defaults.json
       const res = await fetch('/api/save-defaults', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(values()),
       })
+      // Aussi persister dans admin-data.json
+      adminSetCss(values())
+      await saveAdminData()
       if (res.ok) {
         showToast('Défauts sauvegardés pour tous !')
       } else {
