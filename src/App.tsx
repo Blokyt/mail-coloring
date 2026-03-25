@@ -4,7 +4,6 @@ import { isAdmin, toggleAdmin } from './stores/admin'
 import { SidePanel } from './components/SidePanel'
 import { ToolbarPanel } from './components/ToolbarPanel'
 import { Editor } from './components/Editor'
-import { CssTweaker } from './components/CssTweaker'
 import { Toast } from './components/Toast'
 import { TutorialOverlay } from './components/TutorialOverlay'
 import { WelcomeModal } from './components/WelcomeModal'
@@ -32,7 +31,6 @@ export default function App() {
         </div>
         <SidePanel side="right" />
       </div>
-      <CssTweaker />
       <Toast />
       <TutorialOverlay />
       <WelcomeModal />

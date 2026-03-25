@@ -28,9 +28,10 @@
 .admin-slider-track.active .admin-slider-thumb{left:18px}
 .admin-slider-label{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
 
-/* ── Admin Panel ── */
-.admin-panel-trigger{position:fixed;bottom:12px;left:16px;font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-sm);padding:6px 14px;background:var(--peach);border:var(--border) solid var(--soft-black);border-radius:var(--radius-md);box-shadow:var(--shadow-x) var(--shadow-y) 0 var(--shadow-color);cursor:pointer;z-index:200;transition:transform .1s,box-shadow .1s}
-.admin-panel-trigger:hover{transform:translate(-2px,-2px);box-shadow:calc(var(--shadow-x) + 2px) calc(var(--shadow-y) + 2px) 0 var(--shadow-color)}
+/* ── Admin gear (visible en admin) ── */
+.admin-gear{position:fixed;bottom:12px;right:16px;width:40px;height:40px;border-radius:50%;background:var(--peach);border:var(--border) solid var(--soft-black);font-size:20px;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:200;transition:transform .3s;box-shadow:var(--shadow-x) var(--shadow-y) 0 var(--peach);user-select:none}
+.admin-gear.open{transform:rotate(90deg)}
+.admin-gear:hover{transform:rotate(15deg)}
 .admin-tabs{display:flex;gap:0;border-bottom:var(--border) solid var(--separator);padding:0 24px}
 .admin-body{flex:1;overflow-y:auto;padding:16px 24px 24px}
 .admin-section{display:flex;flex-direction:column;gap:10px}
@@ -63,6 +64,7 @@
 .admin-emoji-add-row{display:flex;gap:8px;align-items:center;margin-top:8px}
 .admin-footer{display:flex;align-items:center;gap:12px;padding:14px 24px;border-top:var(--border) solid var(--separator);background:var(--bg)}
 .admin-footer-hint{font-family:'Fredoka',sans-serif;font-weight:500;font-size:var(--font-xs);color:var(--muted)}
+.admin-css-actions{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
 .header-spacer{flex:1}
 
 /* ── Status bar (formatage courant) ── */
