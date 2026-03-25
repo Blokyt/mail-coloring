@@ -1,5 +1,5 @@
 import { onMount, onCleanup, createSignal } from 'solid-js'
-import { pushUndo, undo, pushRedo, redo, activeColorEffect, activeSizeEffect, intensity, baseSize } from '../stores/editor'
+import { pushUndo, undo, pushRedo, redo, activeColorEffect, activeSizeEffect, baseSize } from '../stores/editor'
 import { COLOR_EFFECTS, SIZE_EFFECTS } from '../engine/effects'
 import { getBuffer } from './Header'
 
@@ -198,7 +198,7 @@ export function applyColorToSelection(colors: string[]) {
  * Applique un effet de taille sur la selection en preservant le formatage existant.
  * Chaque caractere non-espace recoit sa taille selon getOffset().
  */
-export function applySizeToSelection(getOffset: (charIdx: number, total: number) => number, baseSize: number) {
+export function applySizeToSelection(getOffset: (charIdx: number) => number, baseSize: number) {
   if (!editorEl) return
   restoreSelection()
   const sel = window.getSelection()
@@ -213,12 +213,6 @@ export function applySizeToSelection(getOffset: (charIdx: number, total: number)
   const textNodes: Text[] = []
   while (walker.nextNode()) textNodes.push(walker.currentNode as Text)
 
-  // Compter le total de caracteres non-espace
-  let total = 0
-  for (const tn of textNodes) {
-    for (const c of (tn.textContent || '')) { if (c !== ' ' && c !== '\n') total++ }
-  }
-
   let charIdx = 0
   for (const textNode of textNodes) {
     const text = textNode.textContent || ''
@@ -228,7 +222,7 @@ export function applySizeToSelection(getOffset: (charIdx: number, total: number)
         charFrag.appendChild(document.createTextNode(char))
       } else {
         const span = document.createElement('span')
-        const offset = getOffset(charIdx, total)
+        const offset = getOffset(charIdx)
         span.style.fontSize = `${Math.max(8, Math.round(baseSize + offset))}px`
         span.textContent = char
         charFrag.appendChild(span)
@@ -254,12 +248,16 @@ export function Editor() {
 
   let pw = 200   // page width (recalculated on resize)
   let ws = 0     // window start: 0-indexed first visible page
-  let transitioning = false
+  let lastVpWidth = 0 // track viewport width to avoid spurious recalcs
 
-  /* Recalculate column sizing when viewport resizes */
+  /* Recalculate column sizing — ONLY when viewport actually resizes */
   function updateLayout() {
     if (!viewportEl || !editorEl) return
     const vw = viewportEl.clientWidth
+    // Skip if viewport width hasn't actually changed (avoids reflow-triggered recalcs)
+    if (vw === lastVpWidth && pw > 50) return
+    lastVpWidth = vw
+
     pw = (vw - 2 * EDITOR_PAD - 2 * COL_GAP) / 3
     if (pw < 50) pw = 50
 
@@ -267,27 +265,75 @@ export function Editor() {
     editorEl.style.width = (contentWidth + 2 * EDITOR_PAD) + 'px'
     editorEl.style.columnCount = String(MAX_PAGES)
 
-    // Position the two page separators (pseudo-elements on viewport)
     viewportEl.style.setProperty('--sep-left-1', (EDITOR_PAD + pw + COL_GAP / 2) + 'px')
     viewportEl.style.setProperty('--sep-left-2', (EDITOR_PAD + 2 * pw + COL_GAP + COL_GAP / 2) + 'px')
 
-    applyOffset()
+    slideTo(ws)
   }
 
-  /* Which column (0-indexed) is the cursor currently in? */
+  /** Get column index from a bounding rect relative to the editor */
+  function rectToCol(rect: DOMRect): number {
+    if (!editorEl || pw <= 0) return 0
+    const editorRect = editorEl.getBoundingClientRect()
+    const relX = rect.left - editorRect.left - EDITOR_PAD
+    return Math.max(0, Math.min(Math.floor(relX / (pw + COL_GAP)), MAX_PAGES - 1))
+  }
+
+  /** Which column is the cursor currently in? */
   function getCursorPage(): number {
     const sel = window.getSelection()
     if (!sel || sel.rangeCount === 0 || !editorEl) return ws
     const range = sel.getRangeAt(0)
     if (!editorEl.contains(range.commonAncestorContainer)) return ws
 
+    // Essai 1 : rect direct du range
     const rect = range.getBoundingClientRect()
-    if (rect.x === 0 && rect.y === 0 && rect.width === 0 && rect.height === 0) return ws
+    if (rect.x || rect.y || rect.width || rect.height) {
+      return rectToCol(rect)
+    }
 
+    // Essai 2 : noeud voisin (cas classique après frappe — curseur après un span)
+    const container = range.startContainer
+    const offset = range.startOffset
+    if (container === editorEl && offset > 0) {
+      const prev = editorEl.childNodes[offset - 1]
+      if (prev) {
+        const r = prev.nodeType === Node.ELEMENT_NODE
+          ? (prev as Element).getBoundingClientRect()
+          : (() => { const tr = document.createRange(); tr.selectNode(prev); return tr.getBoundingClientRect() })()
+        if (r.x || r.y || r.width || r.height) {
+          const editorRect = editorEl.getBoundingClientRect()
+          const relX = r.right - editorRect.left - EDITOR_PAD
+          return Math.max(0, Math.min(Math.floor(relX / (pw + COL_GAP)), MAX_PAGES - 1))
+        }
+      }
+    }
+
+    // Essai 3 : focusNode
+    const node = sel.focusNode
+    if (node && node !== editorEl) {
+      const el = (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement) as Element | null
+      if (el && editorEl.contains(el)) {
+        const r = el.getBoundingClientRect()
+        if (r.x || r.y || r.width || r.height) {
+          return rectToCol(r)
+        }
+      }
+    }
+
+    return ws
+  }
+
+  /** Which column is the last content in? Uses the END of the last child's bounding rect. */
+  function getLastUsedPage(): number {
+    if (!editorEl || !editorEl.lastChild || pw <= 0) return 0
+    const range = document.createRange()
+    range.selectNodeContents(editorEl.lastChild)
+    const rect = range.getBoundingClientRect()
     const editorRect = editorEl.getBoundingClientRect()
-    const relX = rect.left - editorRect.left - EDITOR_PAD
-    if (pw <= 0) return 0
-    return Math.max(0, Math.floor(relX / (pw + COL_GAP)))
+    // Use rect.RIGHT to find the last column (not rect.left which gives the first)
+    const relX = rect.right - editorRect.left - EDITOR_PAD
+    return Math.max(0, Math.min(Math.floor(relX / (pw + COL_GAP)), MAX_PAGES - 1))
   }
 
   /* Map a page number to the correct window-start.
@@ -297,40 +343,40 @@ export function Editor() {
     return Math.floor((page - 1) / 2) * 2
   }
 
-  /* Check if cursor left the visible 3-page window → shift */
-  function checkCursorPage() {
-    if (transitioning) return
-    const cp = getCursorPage()
-    if (cp < ws || cp >= ws + 3) {
-      ws = getWindowForPage(cp)
-      applyOffset()
-    }
+  let checkTimer = 0
+  /** Debounced cursor check — forces reflow then reads cursor position */
+  function scheduleCheck() {
+    cancelAnimationFrame(checkTimer)
+    checkTimer = requestAnimationFrame(() => {
+      if (!editorEl) return
+      // Force browser to complete CSS column reflow before reading position
+      void editorEl.offsetHeight
+      const cp = getCursorPage()
+      if (cp < ws || cp >= ws + 3) {
+        slideTo(getWindowForPage(cp))
+      }
+    })
   }
 
-  /* Slide the editor so the right 3 pages are visible */
-  function applyOffset() {
+  /* Slide the editor so the right 3 pages are visible — NO recursive re-check */
+  function slideTo(newWs: number) {
     if (!editorEl) return
-    transitioning = true
+    ws = Math.max(0, Math.min(newWs, MAX_PAGES - 3))
     const offset = ws * (pw + COL_GAP)
     editorEl.style.transform = `translateX(-${offset}px)`
     setPageLabel(`${ws + 1} – ${ws + 3}`)
     setCanGoBack(ws > 0)
-    setTimeout(() => {
-      transitioning = false
-      checkCursorPage() // re-check after animation
-    }, 320)
   }
 
   function goBack() {
-    if (ws <= 0 || transitioning) return
-    ws = Math.max(0, ws - 2)
-    applyOffset()
+    if (ws <= 0) return
+    slideTo(ws - 2)
   }
 
   function goForward() {
-    if (transitioning) return
-    ws += 2
-    applyOffset()
+    const lastPage = getLastUsedPage()
+    if (ws + 3 > lastPage) return // pas de pages vides au-dela du contenu
+    slideTo(ws + 2)
   }
 
   onMount(() => {
@@ -440,6 +486,36 @@ export function Editor() {
         newRange.collapse(true)
         sel.removeAllRanges()
         sel.addRange(newRange)
+
+        scheduleCheck()
+      })
+
+      // Sanitiser les paste — appliquer les styles de la hotbar a chaque caractere
+      editorEl.addEventListener('paste', (e) => {
+        e.preventDefault()
+        const text = e.clipboardData?.getData('text/plain') || ''
+        if (!text) return
+        const buf = getBuffer()
+        const deco: string[] = []
+        if (buf.underline) deco.push('underline')
+        if (buf.strikeThrough) deco.push('line-through')
+        const style = [
+          `color:${buf.foreColor}`,
+          `font-size:${buf.fontSize}px`,
+          `font-family:${buf.fontFamily}`,
+          `font-weight:${buf.bold ? '700' : '400'}`,
+          `font-style:${buf.italic ? 'italic' : 'normal'}`,
+          `text-decoration:${deco.length ? deco.join(' ') : 'none'}`,
+          buf.hiliteColor ? `background-color:${buf.hiliteColor}` : '',
+        ].filter(Boolean).join(';')
+        const html = [...text].map(ch => {
+          if (ch === '\n') return '<br>'
+          if (ch === ' ') return ' '
+          const safe = ch.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          return `<span style="${style}">${safe}</span>`
+        }).join('')
+        replaceSelectionWithHtml(html)
+        scheduleCheck()
       })
     }
 
@@ -462,7 +538,7 @@ export function Editor() {
         const sizeId = activeSizeEffect()
         const colorEffect = colorId ? COLOR_EFFECTS[colorId] : null
         const sizeEffect = sizeId ? SIZE_EFFECTS[sizeId] : null
-        const opts = { intensity: intensity(), baseSize: baseSize() }
+        const opts = { baseSize: baseSize() }
 
         // Extraire le contenu selectionne
         const extracted = range.extractContents()
@@ -487,7 +563,7 @@ export function Editor() {
 
           let fontSize = buf.fontSize
           if (sizeEffect) {
-            const offset = sizeEffect.getOffset(charIdx, nonSpaceCount, opts)
+            const offset = sizeEffect.getOffset(charIdx)
             fontSize = Math.max(8, Math.round(opts.baseSize + offset))
           }
 
@@ -522,11 +598,11 @@ export function Editor() {
     if (viewportEl) ro.observe(viewportEl)
     updateLayout()
 
-    document.addEventListener('selectionchange', checkCursorPage)
+    document.addEventListener('selectionchange', scheduleCheck)
 
     onCleanup(() => {
       ro.disconnect()
-      document.removeEventListener('selectionchange', checkCursorPage)
+      document.removeEventListener('selectionchange', scheduleCheck)
     })
   })
 

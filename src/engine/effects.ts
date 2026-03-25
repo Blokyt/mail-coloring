@@ -6,7 +6,6 @@
  */
 
 export interface EffectOptions {
-  intensity: number   // 1-10
   baseSize: number    // px
 }
 
@@ -31,7 +30,28 @@ export interface ColorEffect {
 export interface SizeEffect {
   name: string
   icon: string
-  getOffset: (index: number, total: number, opts: EffectOptions) => number
+  /** Retourne l'offset en px pour le caractere a l'index donne (deterministe, independant de la longueur du texte) */
+  getOffset: (index: number) => number
+}
+
+// ============================================
+// TYPES COMPOSES
+// ============================================
+
+export type EmojiPosition = 'before' | 'after' | 'both' | 'none'
+
+export interface EmojiDecoration {
+  emoji: string
+  position: EmojiPosition
+}
+
+/** Effet compose : combine taille + couleur + police + emoji */
+export interface ComposedEffectData {
+  sizeEffectRef?: string | null
+  colorEffectRef?: string | null
+  flatColor?: string | null
+  font?: string | null
+  emojiDecoration?: EmojiDecoration | null
 }
 
 // ============================================
@@ -91,52 +111,45 @@ export const COLOR_EFFECTS: Record<string, ColorEffect> = {
 // ============================================
 
 export const SIZE_EFFECTS: Record<string, SizeEffect> = {
+  montee: {
+    name: 'Montee lineaire',
+    icon: '',
+    getOffset: (i) => i * 4,
+  },
+  montee_exp: {
+    name: 'Montee exponentielle',
+    icon: '',
+    getOffset: (i) => 3 * (Math.exp(i * 0.25) - 1),
+  },
+  descente: {
+    name: 'Descente lineaire',
+    icon: '',
+    getOffset: (i) => Math.max(0, 40 - i * 4),
+  },
+  descente_exp: {
+    name: 'Descente exponentielle',
+    icon: '',
+    getOffset: (i) => 40 * Math.exp(-i * 0.3),
+  },
   arche: {
     name: 'Arche',
     icon: '',
-    getOffset: (i, total, opts) => {
-      // Arche douce : monte au milieu, redescend
-      const t = i / Math.max(1, total - 1)
-      const amp = 6 + opts.intensity * 6
-      return Math.sin(t * Math.PI) * amp
-    },
+    getOffset: (i) => 30 * Math.exp(-((i - 5) ** 2) / 8),
   },
-  montee: {
-    name: 'Montée',
+  impulsion: {
+    name: 'Impulsion',
     icon: '',
-    getOffset: (i, total, opts) => {
-      // Croissant : petit → très grand
-      const progress = i / Math.max(1, total - 1)
-      return progress * opts.intensity * 8
-    },
+    getOffset: (i) => 25 * Math.exp(-((i - 1) ** 2) / 2),
   },
   vague: {
     name: 'Vague',
     icon: '',
-    getOffset: (i, _total, opts) => {
-      // Vague sinusoïdale rapide
-      const amp = 5 + opts.intensity * 5
-      return Math.sin(i * 0.6) * amp
-    },
+    getOffset: (i) => (Math.sin(i * 0.8) + 1) * 15,
   },
   rebond: {
     name: 'Rebond',
     icon: '',
-    getOffset: (i, _total, opts) => {
-      // Rebond dynamique
-      const amp = 4 + opts.intensity * 5
-      return Math.abs(Math.sin(i * 0.8)) * amp
-    },
-  },
-  descente: {
-    name: 'Descente',
-    icon: '',
-    getOffset: (i, total, opts) => {
-      // Décroissant : très grand → petit
-      const progress = i / Math.max(1, total - 1)
-      const maxAdd = opts.intensity * 8
-      return maxAdd * (1 - progress)
-    },
+    getOffset: (i) => Math.abs(Math.sin(i * 0.6)) * 25,
   },
 }
 
@@ -178,7 +191,7 @@ export function applyEffects(
     }
 
     if (sizeEffect) {
-      const offset = sizeEffect.getOffset(charIdx, nonSpaceCount, options)
+      const offset = sizeEffect.getOffset(charIdx)
       const size = Math.max(8, Math.round(options.baseSize + offset))
       styles.push(`font-size:${size}px`)
     }
@@ -215,7 +228,7 @@ export function applySizeProfile(
 
   let charIdx = 0
   const parts: string[] = []
-  const maxAdd = options.intensity * 8
+  const maxAdd = 40
 
   for (const char of chars) {
     if (char === ' ') {
@@ -223,13 +236,7 @@ export function applySizeProfile(
       continue
     }
 
-    // Interpolation linéaire du profil
-    const t = total === 1 ? 0 : charIdx / (total - 1)
-    const profileIdx = t * (profile.length - 1)
-    const lo = Math.floor(profileIdx)
-    const hi = Math.min(lo + 1, profile.length - 1)
-    const frac = profileIdx - lo
-    const value = profile[lo] * (1 - frac) + profile[hi] * frac
+    const value = interpolateProfile(profile, charIdx, total)
 
     const size = Math.max(8, Math.round(options.baseSize + value * maxAdd))
     const styles: string[] = [`font-size:${size}px`]
@@ -247,32 +254,40 @@ export function applySizeProfile(
 }
 
 /**
- * Évalue une fonction mathématique et retourne un profil normalisé.
- * `expr` est une expression en x (ex: "sin(x)", "x^2").
+ * Applique un effet compose (taille + couleur + police + emoji) a du texte.
+ * `resolvedColors` permet de passer une palette custom-color resolue par l'appelant.
  */
-export function mathToProfile(
-  expr: string,
-  samples: number = 50,
-  hStretch: number = 1,
-): number[] {
-  const raw: number[] = []
+export function applyComposedEffect(
+  text: string,
+  data: ComposedEffectData,
+  options: EffectOptions,
+  resolvedColors?: string[] | null,
+): string {
+  const chars = [...text]
+  const getOffset = data.sizeEffectRef ? SIZE_EFFECTS[data.sizeEffectRef]?.getOffset : null
+  const colors = resolvedColors
+    ?? (data.colorEffectRef ? COLOR_EFFECTS[data.colorEffectRef]?.colors : null)
+    ?? (data.flatColor ? [data.flatColor] : null)
 
-  for (let i = 0; i < samples; i++) {
-    // x centré sur 0 : va de -π·b à +π·b (milieu du mot = x=0)
-    const t = (i / (samples - 1)) * 2 - 1  // t ∈ [-1, +1]
-    const rawX = t * Math.PI * hStretch
-    try {
-      raw.push(evaluateMathExpr(expr, rawX))
-    } catch {
-      raw.push(0)
+  let charIdx = 0
+  const inner = chars.map(char => {
+    if (char === ' ') return ' '
+    const styles: string[] = []
+    if (colors) styles.push(`color:${colors[charIdx % colors.length]}`)
+    if (getOffset) {
+      const size = Math.max(8, Math.round(options.baseSize + getOffset(charIdx)))
+      styles.push(`font-size:${size}px`)
     }
-  }
+    if (data.font) styles.push(`font-family:${data.font}`)
+    charIdx++
+    return styles.length > 0 ? `<span style="${styles.join(';')}">${char}</span>` : char
+  }).join('')
 
-  // Normaliser la forme à [0..1] — profil pur de la courbe
-  const min = Math.min(...raw)
-  const max = Math.max(...raw)
-  const range = max - min || 1
-  return raw.map(v => (v - min) / range)
+  const emoji = data.emojiDecoration
+  if (!emoji || emoji.position === 'none') return inner
+  const before = (emoji.position === 'before' || emoji.position === 'both') ? emoji.emoji : ''
+  const after = (emoji.position === 'after' || emoji.position === 'both') ? emoji.emoji : ''
+  return `${before}${inner}${after}`
 }
 
 /** Évaluateur simple d'expressions math en x (safe: retourne 0 en cas d'erreur) */
@@ -302,6 +317,16 @@ function evaluateMathExpr(expr: string, x: number): number {
   const result = new Function(`return ${sanitized}`)()
   if (typeof result !== 'number' || !isFinite(result)) return 0
   return result
+}
+
+/** Interpole une valeur dans un profil normalise [0..1] */
+export function interpolateProfile(profile: number[], charIdx: number, total: number): number {
+  const t = total === 1 ? 0 : charIdx / (total - 1)
+  const pIdx = t * (profile.length - 1)
+  const lo = Math.floor(pIdx)
+  const hi = Math.min(lo + 1, profile.length - 1)
+  const frac = pIdx - lo
+  return profile[lo] * (1 - frac) + profile[hi] * frac
 }
 
 /** Nettoyage HTML pour compatibilité Outlook */

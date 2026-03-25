@@ -1,4 +1,4 @@
-import { createSignal, For, onMount } from 'solid-js'
+import { createSignal, For, Show, onMount } from 'solid-js'
 import { showToast } from './Toast'
 
 /* ══════════════════════════════════════════
@@ -252,45 +252,53 @@ export function CssTweaker() {
 
         <div class="tweaker-categories">
           <For each={CATEGORIES}>
-            {(cat) => (
-              <div class="tweaker-category">
-                <div class="tweaker-category-title">{cat.name}</div>
-                <div class="tweaker-category-grid">
-                  <For each={cat.controls}>
-                    {(ctrl) => (
-                      <div class="tweaker-control">
-                        <label>{ctrl.label}</label>
-                        {ctrl.type === 'color' ? (
-                          <div class="tweak-row tweak-row-color">
-                            <div class="tweak-color-wrapper">
-                              <div class="tweak-color-swatch" style={{ background: values()[ctrl.variable] as string }} />
-                              <input
-                                type="color"
-                                value={values()[ctrl.variable] as string}
-                                onInput={(e) => updateVar(ctrl, e.currentTarget.value)}
-                              />
-                            </div>
-                            <span class="tweak-val tweak-val-color">{(values()[ctrl.variable] as string).toUpperCase()}</span>
-                          </div>
-                        ) : (
-                          <div class="tweak-row">
-                            <input
-                              type="range"
-                              min={(ctrl as RangeControl).min}
-                              max={(ctrl as RangeControl).max}
-                              step={(ctrl as RangeControl).step ?? 1}
-                              value={values()[ctrl.variable] as number}
-                              onInput={(e) => updateVar(ctrl, parseFloat(e.currentTarget.value))}
-                            />
-                            <span class="tweak-val">{displayValue(ctrl)}</span>
+            {(cat, catIdx) => {
+              const [catOpen, setCatOpen] = createSignal(catIdx() === 0)
+              return (
+                <div class="tweaker-category">
+                  <button class="tweaker-category-toggle" onClick={() => setCatOpen(!catOpen())}>
+                    <span class={`tweaker-arrow ${catOpen() ? 'open' : ''}`}>&#9656;</span>
+                    <span class="tweaker-category-title">{cat.name}</span>
+                  </button>
+                  <Show when={catOpen()}>
+                    <div class="tweaker-category-grid">
+                      <For each={cat.controls}>
+                        {(ctrl) => (
+                          <div class="tweaker-control">
+                            <label>{ctrl.label}</label>
+                            {ctrl.type === 'color' ? (
+                              <div class="tweak-row tweak-row-color">
+                                <div class="tweak-color-wrapper">
+                                  <div class="tweak-color-swatch" style={{ background: values()[ctrl.variable] as string }} />
+                                  <input
+                                    type="color"
+                                    value={values()[ctrl.variable] as string}
+                                    onInput={(e) => updateVar(ctrl, e.currentTarget.value)}
+                                  />
+                                </div>
+                                <span class="tweak-val tweak-val-color">{(values()[ctrl.variable] as string).toUpperCase()}</span>
+                              </div>
+                            ) : (
+                              <div class="tweak-row">
+                                <input
+                                  type="range"
+                                  min={(ctrl as RangeControl).min}
+                                  max={(ctrl as RangeControl).max}
+                                  step={(ctrl as RangeControl).step ?? 1}
+                                  value={values()[ctrl.variable] as number}
+                                  onInput={(e) => updateVar(ctrl, parseFloat(e.currentTarget.value))}
+                                />
+                                <span class="tweak-val">{displayValue(ctrl)}</span>
+                              </div>
+                            )}
                           </div>
                         )}
-                      </div>
-                    )}
-                  </For>
+                      </For>
+                    </div>
+                  </Show>
                 </div>
-              </div>
-            )}
+              )
+            }}
           </For>
         </div>
       </div>

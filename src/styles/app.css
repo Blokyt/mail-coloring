@@ -19,7 +19,8 @@
 
 /* ── Header ── */
 .header{display:flex;align-items:center;gap:12px;padding:var(--header-pad) 20px;border-bottom:var(--border) solid var(--soft-black);background:var(--white);position:relative;z-index:2}
-.brand-pill{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-lg);background:var(--lavender);border:var(--border) solid var(--soft-black);border-radius:var(--radius-lg);padding:4px 18px}
+.brand-pill{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-lg);background:var(--lavender);border:var(--border) solid var(--soft-black);border-radius:var(--radius-lg);padding:4px 18px;cursor:default;user-select:none}
+.admin-badge{font-size:var(--font-xs);font-weight:700;background:var(--peach);color:var(--soft-black);border:var(--border) solid var(--soft-black);border-radius:var(--radius-sm);padding:1px 6px;margin-left:8px;vertical-align:middle;text-transform:uppercase;letter-spacing:1px}
 .header-spacer{flex:1}
 
 /* ── Status bar (formatage courant) ── */
@@ -50,16 +51,21 @@
 .side-panel::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:4px}
 .side-panel-left{width:var(--side-width-left);border-right:var(--border) solid var(--separator);background:var(--white)}
 .side-panel-right{width:var(--side-width-right);border-left:var(--border) solid var(--separator);background:var(--white)}
-.side-panel-title{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-xs);text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);text-align:center;padding:4px 0 6px}
+.side-panel-title{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-xs);text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);text-align:center;padding:4px 0 6px;border-bottom:var(--border) solid var(--separator);margin-bottom:2px}
 .side-label{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-xs);text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:6px 4px 2px}
 .side-sep{height:1px;background:var(--separator);margin:4px}
-.side-tag{font-family:'Fredoka',sans-serif;font-weight:600;font-size:var(--font-sm);border:var(--border) solid var(--soft-black);border-radius:var(--radius-sm);padding:4px 6px;background:var(--white);color:var(--soft-black);transition:transform .1s,box-shadow .1s;box-shadow:var(--shadow-x) var(--shadow-y) 0 var(--shadow-color);user-select:none;text-align:center;width:100%;display:flex;align-items:flex-end;justify-content:center;overflow:hidden;white-space:nowrap;line-height:1;min-height:32px}
-.side-tag span{vertical-align:bottom;line-height:1}
-.side-tag:hover{transform:translate(-2px,-2px);box-shadow:var(--shadow-x) var(--shadow-y) 0 var(--shadow-color)}
+.side-tag{font-family:'Fredoka',sans-serif;font-weight:600;font-size:var(--font-sm);border:var(--border) solid var(--soft-black);border-radius:var(--radius-sm);padding:4px 6px;background:var(--white);color:var(--soft-black);transition:transform .1s,box-shadow .1s;box-shadow:var(--shadow-x) var(--shadow-y) 0 var(--shadow-color);user-select:none;text-align:center;width:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap;line-height:1;min-height:32px;cursor:pointer}
+.side-tag span{line-height:1}
+.side-tag:hover{transform:translate(-2px,-2px);box-shadow:calc(var(--shadow-x) + 2px) calc(var(--shadow-y) + 2px) 0 var(--shadow-color)}
 .side-tag:active{transform:translate(0,0);box-shadow:none}
 .side-tag.active{background:var(--lavender)}
-.side-tag.armed{border-left:5px solid var(--peach);background:var(--white)}
+.side-tag.armed{border-left:5px solid var(--peach);background:rgba(253,186,116,0.06)}
 .side-tag.recent{opacity:.7}
+
+/* ── Tags taille — nom + sparkline ── */
+.side-tag-size{flex-direction:column;align-items:stretch;white-space:normal;gap:2px;padding:4px 8px;min-height:42px}
+.side-tag-name{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-xs);text-align:center;color:var(--soft-black);line-height:1.2}
+.side-tag-sparkline{width:100%;height:18px}
 
 /* ── Centre ── */
 .center-area{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
@@ -124,7 +130,11 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;hei
 .tweaker-categories{overflow-y:auto;display:flex;flex-direction:column;gap:14px;flex:1;min-height:0;padding-right:4px}
 .tweaker-categories::-webkit-scrollbar{width:4px}
 .tweaker-categories::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:4px}
-.tweaker-category-title{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-sm);color:var(--soft-black);margin-bottom:6px;padding-bottom:4px;border-bottom:var(--border) solid var(--separator)}
+.tweaker-category-toggle{display:flex;align-items:center;gap:6px;width:100%;background:none;border:none;border-bottom:var(--border) solid var(--separator);padding:0 0 4px;margin-bottom:6px;cursor:pointer;transition:all .15s}
+.tweaker-category-toggle:hover{color:var(--lavender)}
+.tweaker-arrow{font-size:var(--font-sm);color:var(--muted);transition:transform .2s;display:inline-block}
+.tweaker-arrow.open{transform:rotate(90deg)}
+.tweaker-category-title{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-sm);color:var(--soft-black)}
 .tweaker-category-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 16px}
 .tweaker-control{display:flex;flex-direction:column;gap:2px}
 .tweaker-control label{font-family:'Fredoka',sans-serif;font-weight:600;font-size:var(--font-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
@@ -156,6 +166,7 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;hei
 .fav-add{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-md);border:var(--border) solid var(--soft-black);border-radius:var(--radius-sm);width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;padding:0;background:var(--white);color:var(--soft-black);cursor:pointer;user-select:none;transition:transform .1s,box-shadow .1s}
 .fav-add:hover{transform:translate(-2px,-2px);box-shadow:var(--shadow-x) var(--shadow-y) 0 var(--shadow-color)}
 .fav-add:active{transform:translate(0,0);box-shadow:none}
+.emoji-fav-pill{font-size:1.1rem !important;padding:2px 4px !important;min-width:28px;text-align:center}
 
 /* ── Font Picker ── */
 .font-picker{position:relative;display:flex;align-items:center;gap:4px;z-index:60}
@@ -171,3 +182,20 @@ input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;hei
 .font-picker-item-name{flex:1;font-size:var(--font-md);color:var(--soft-black)}
 .font-picker-star{background:none;border:none;font-size:var(--font-md);cursor:pointer;color:var(--muted);padding:0 2px}
 .font-picker-star.is-fav{color:var(--peach)}
+
+/* ── Modal generique (Portal) ── */
+.modal-backdrop{position:fixed;inset:0;background:rgba(55,65,81,0.4);backdrop-filter:blur(4px)}
+.modal-container{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:94vw;max-height:85vh;background:var(--white);border:var(--border) solid var(--soft-black);border-radius:var(--radius-lg);box-shadow:var(--shadow-x) var(--shadow-y) 0 var(--lavender);display:flex;flex-direction:column;overflow:hidden}
+.modal-header{padding:20px 24px 12px;position:relative}
+.modal-title{font-family:'Fredoka',sans-serif;font-size:var(--font-lg);font-weight:700;color:var(--soft-black)}
+.modal-desc{font-size:var(--font-sm);color:var(--muted);margin-top:2px}
+.modal-close{position:absolute;top:16px;right:20px;width:32px;height:32px;background:var(--bg);border:var(--border) solid var(--soft-black);border-radius:var(--radius-sm);cursor:pointer;transition:transform .1s,box-shadow .1s;box-shadow:var(--shadow-x) var(--shadow-y) 0 var(--shadow-color);padding:0;display:flex;align-items:center;justify-content:center}
+.modal-close:hover{transform:translate(-2px,-2px);box-shadow:calc(var(--shadow-x) + 2px) calc(var(--shadow-y) + 2px) 0 var(--shadow-color)}
+.modal-close:active{transform:translate(0,0);box-shadow:none}
+.modal-close::before,.modal-close::after{content:'';position:absolute;width:14px;height:var(--border);background:var(--soft-black);border-radius:1px}
+.modal-close::before{transform:rotate(45deg)}
+.modal-close::after{transform:rotate(-45deg)}
+.modal-sm{max-width:420px}
+.modal-md{max-width:640px}
+.modal-lg{max-width:920px}
+.modal-full{max-width:94vw}

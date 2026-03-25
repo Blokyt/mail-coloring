@@ -18,7 +18,7 @@
 .math-formula-paren,.math-formula-dot{color:var(--muted);font-weight:400}
 
 /* Preview texte live — même rendu que .catalog-preview-item */
-.math-text-preview{background:var(--white);border:var(--border) solid var(--soft-black);border-radius:var(--radius-md);box-shadow:var(--shadow-x) var(--shadow-y) 0 var(--shadow-color);padding:16px 24px;text-align:center;min-height:60px;font-family:'Segoe UI',Arial;font-size:16px;line-height:1.5;overflow:hidden;white-space:nowrap}
+.math-text-preview{background:var(--white);border:var(--border) solid var(--soft-black);border-radius:var(--radius-md);box-shadow:var(--shadow-x) var(--shadow-y) 0 var(--shadow-color);padding:16px 24px;text-align:center;min-height:60px;font-family:'Segoe UI',Arial;font-size:var(--font-preview);line-height:1.5;overflow:hidden;white-space:nowrap}
 
 /* Input f(x) = ... — même pattern que .font-select */
 .math-input-row{display:flex;align-items:center;gap:10px}
@@ -40,3 +40,6 @@
 .math-param-name{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-lg);color:var(--lavender);min-width:18px;text-align:center}
 .math-param input[type="range"]{flex:1;width:auto}
 .math-param-val{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-sm);background:var(--lavender);border:var(--border) solid var(--soft-black);border-radius:var(--radius-sm);padding:2px 8px;min-width:36px;text-align:center}
+
+/* ── Canvas courbe f(x) ── */
+.math-curve-canvas{width:100%;height:160px;background:var(--bg);border:var(--border) solid var(--soft-black);border-radius:var(--radius-md);box-shadow:var(--shadow-x) var(--shadow-y) 0 var(--shadow-color);display:block}

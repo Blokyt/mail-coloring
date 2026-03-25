@@ -39,6 +39,7 @@
   --font-md: 14px;    /* boutons principaux, UI */
   --font-lg: 18px;    /* titres, brand */
   --font-editor: 18px;
+  --font-preview: 16px; /* previews d'effets */
 
   /* Espacement toolbar */
   --toolbar-pad: 6px;

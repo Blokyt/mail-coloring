@@ -5,7 +5,6 @@ const [activeColorEffect, setActiveColorEffect] = createSignal<string | null>(nu
 const [activeSizeEffect, setActiveSizeEffect] = createSignal<string | null>(null)
 
 // Contrôles
-const [intensity, setIntensity] = createSignal(5)
 const [baseSize, setBaseSize] = createSignal(18)
 const [activeFont, setActiveFont] = createSignal('Arial, sans-serif')
 
@@ -44,7 +43,6 @@ export function pushRedo(html: string) {
 export {
   activeColorEffect, setActiveColorEffect,
   activeSizeEffect, setActiveSizeEffect,
-  intensity, setIntensity,
   baseSize, setBaseSize,
   activeFont, setActiveFont,
   customSizeProfile, setCustomSizeProfile,

@@ -1,13 +1,15 @@
 import { For, Show, createSignal } from 'solid-js'
 import { VENETIAN_PALETTE } from '../data/colors'
-import { baseSize, setBaseSize, intensity, setIntensity } from '../stores/editor'
-// FontPicker handles font selection and favorites
-import { sizeFavorites, addSizeFavorite, removeSizeFavorite } from '../stores/favorites'
-import { applyInlineStyle, execFormatCommand, applyLink, removeLink, getSelectedText } from './Editor'
+import { baseSize, setBaseSize } from '../stores/editor'
+import { sizeFavorites, addSizeFavorite, removeSizeFavorite } from '../stores/workshops'
+import { getEmojiFavoritesList } from '../stores/emojis'
+import { applyInlineStyle, execFormatCommand, applyLink, getSelectedText, replaceSelectionWithHtml } from './Editor'
 import { updateBuffer, getBuffer } from './Header'
 import { EffectsCatalog } from './EffectsCatalog'
 import type { CatalogTab } from './EffectsCatalog'
 import { FontPicker } from './FontPicker'
+import { EmojiPicker } from './EmojiPicker'
+import { Modal } from './Modal'
 import { showToast } from './Toast'
 
 const CUSTOM_COLORS_KEY = 'artlequin_custom_colors'
@@ -82,6 +84,7 @@ export function ToolbarPanel() {
               requestAnimationFrame(() => { linkInputRef?.focus(); linkInputRef?.select() })
             }}
           >🔗</button>
+          <EmojiPicker onSelect={(emoji) => replaceSelectionWithHtml(emoji)} />
           <div class="separator" />
           <div class="toggle-group">
             <button class={`toggle-btn ${colorMode() === 'text' ? 'active' : ''}`} onClick={() => setColorMode('text')}>Texte</button>
@@ -130,25 +133,33 @@ export function ToolbarPanel() {
             </div>
           </Show>
           <div class="separator" />
-          <div class="slider-group">
-            <span class="slider-label">Intensite</span>
-            <input type="range" min="1" max="10" value={intensity()} onInput={(e) => setIntensity(parseInt(e.currentTarget.value))} />
-            <span class="slider-value">{intensity()}</span>
-          </div>
-          <div class="separator" />
-          <button class="btn-compact" onClick={() => openCatalog('couleur')} title="Parcourir tous les effets">Catalogue</button>
-          <button class="btn-compact" onClick={() => openCatalog('fx')} title="Creer un effet par fonction mathematique">f(x)</button>
-          <button class="btn-compact" onClick={() => openCatalog('trace')} title="Dessiner un profil de taille a la souris">Trace</button>
+          <button class="btn-compact" onClick={() => openCatalog('base')} title="Parcourir tous les effets">Catalogue</button>
+          <button class="btn-compact" onClick={() => openCatalog('perso')} title="Votre collection d'effets">Mon atelier</button>
+          <button class="btn-compact" onClick={() => openCatalog('creer')} title="Creer un effet par f(x) ou trace">Creer</button>
+          <Show when={getEmojiFavoritesList().length > 0}>
+            <div class="separator" />
+            <div class="fav-pills">
+              <For each={getEmojiFavoritesList()}>
+                {(emoji) => (
+                  <button
+                    class="fav-pill emoji-fav-pill"
+                    title={`Inserer ${emoji}`}
+                    onClick={() => replaceSelectionWithHtml(emoji)}
+                  >
+                    {emoji}
+                  </button>
+                )}
+              </For>
+            </div>
+          </Show>
         </div>
       </div>
 
       <EffectsCatalog open={catalogOpen()} onClose={() => setCatalogOpen(false)} initialTab={catalogTab()} />
 
       {/* Modale lien */}
-      <Show when={linkOpen()}>
-        <div class="catalog-overlay" onClick={() => setLinkOpen(false)} />
-        <div class="naming-modal" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', "z-index": '301' }}>
-          <span class="naming-title">Ajouter un lien</span>
+      <Modal open={linkOpen()} onClose={() => setLinkOpen(false)} title="Ajouter un lien" size="sm" zIndex={300}>
+        <div style={{ padding: '0 24px 20px', display: 'flex', "flex-direction": 'column', gap: '12px' }}>
           <input
             ref={linkInputRef}
             class="naming-input"
@@ -166,7 +177,7 @@ export function ToolbarPanel() {
             <button class="btn" onClick={() => setLinkOpen(false)}>Annuler</button>
           </div>
         </div>
-      </Show>
+      </Modal>
     </>
   )
 }

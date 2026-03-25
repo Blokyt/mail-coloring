@@ -1,12 +1,13 @@
-import { createSignal, For } from 'solid-js'
-import { evaluateMathExprSafe, mathToProfile } from '../engine/effects'
+import { createSignal, createEffect, For } from 'solid-js'
+import { evaluateMathExprSafe } from '../engine/effects'
 import { baseSize } from '../stores/editor'
+import { PREVIEW_SHORT } from '../data/preview'
 
 interface Props {
-  onApply: (profile: number[]) => void
+  onApply: (profile: number[], expr: string, params: { a: number; b: number; c: number }) => void
 }
 
-const PREVIEW_TEXT = 'Artlequin'
+const PREVIEW_TEXT = PREVIEW_SHORT
 
 const FUNC_BUTTONS = [
   { label: 'sin', insert: 'sin(' },
@@ -32,8 +33,11 @@ const OP_BUTTONS = [
   { label: 'x', insert: 'x' },
 ]
 
+import { CANVAS_BG, CANVAS_GRID, CANVAS_CURVE, CANVAS_MIDLINE, CANVAS_FILL } from '../data/canvas-theme'
+
 export function MathFunction(props: Props) {
   let inputRef!: HTMLInputElement
+  let curveRef!: HTMLCanvasElement
 
   const [expr, setExpr] = createSignal('sin(x)')
   const [a, setA] = createSignal(10)
@@ -47,9 +51,78 @@ export function MathFunction(props: Props) {
     return letters.map((_, i) => {
       const x = n === 1 ? 0 : i / (n - 1) // x ∈ [0, 1]
       const y = a() * evaluateMathExprSafe(expr(), b() * x + c())
-      return Math.max(8, Math.round(baseSize() + y))
+      return Math.max(10, Math.min(36, Math.round(baseSize() + y)))
     })
   }
+
+  /** Dessine la courbe f(x) sur le canvas */
+  const drawCurve = () => {
+    const ctx = curveRef?.getContext('2d')
+    if (!ctx) return
+    const w = curveRef.width
+    const h = curveRef.height
+    const pad = 6
+    const samples = 100
+
+    ctx.clearRect(0, 0, w, h)
+    ctx.fillStyle = CANVAS_BG
+    ctx.fillRect(0, 0, w, h)
+
+    // Grille
+    ctx.strokeStyle = CANVAS_GRID
+    ctx.lineWidth = 1
+    for (let y = 0; y < h; y += 25) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke()
+    }
+
+    // Ligne mediane
+    ctx.strokeStyle = CANVAS_MIDLINE
+    ctx.globalAlpha = 0.5
+    ctx.setLineDash([6, 4])
+    ctx.beginPath(); ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2); ctx.stroke()
+    ctx.setLineDash([])
+    ctx.globalAlpha = 1
+
+    // Calculer les valeurs
+    const values: number[] = []
+    for (let i = 0; i < samples; i++) {
+      const t = i / (samples - 1) // t ∈ [0, 1]
+      const y = a() * evaluateMathExprSafe(expr(), b() * t + c())
+      values.push(y)
+    }
+
+    const minV = Math.min(...values)
+    const maxV = Math.max(...values)
+    const range = maxV - minV || 1
+
+    // Courbe
+    ctx.beginPath()
+    ctx.strokeStyle = CANVAS_CURVE
+    ctx.lineWidth = 3
+    ctx.lineJoin = 'round'
+    ctx.lineCap = 'round'
+
+    for (let i = 0; i < samples; i++) {
+      const x = pad + (i / (samples - 1)) * (w - 2 * pad)
+      const norm = (values[i] - minV) / range
+      const y = pad + (1 - norm) * (h - 2 * pad)
+      if (i === 0) ctx.moveTo(x, y)
+      else ctx.lineTo(x, y)
+    }
+    ctx.stroke()
+
+    // Remplissage sous la courbe
+    ctx.lineTo(pad + (w - 2 * pad), h - pad)
+    ctx.lineTo(pad, h - pad)
+    ctx.closePath()
+    ctx.fillStyle = CANVAS_FILL
+    ctx.fill()
+  }
+
+  createEffect(() => {
+    expr(); a(); b(); c()
+    drawCurve()
+  })
 
   /** HTML de preview — même format que applySizeProfile */
   const previewHtml = (): string => {
@@ -60,8 +133,19 @@ export function MathFunction(props: Props) {
     ).join('')
   }
 
-  /** Pour sauvegarder en favori : normalise les tailles en profil [0,1] */
-  const getProfile = () => mathToProfile(expr(), 50, b())
+  /** Genere un profil [0,1] fidele au preview — meme domaine que getLetterSizes */
+  const getProfile = (): number[] => {
+    const samples = 50
+    const raw: number[] = []
+    for (let i = 0; i < samples; i++) {
+      const x = i / (samples - 1) // x ∈ [0, 1] — meme que le preview
+      raw.push(a() * evaluateMathExprSafe(expr(), b() * x + c()))
+    }
+    const min = Math.min(...raw)
+    const max = Math.max(...raw)
+    const range = max - min || 1
+    return raw.map(v => (v - min) / range)
+  }
 
   const insertAtCursor = (text: string) => {
     const input = inputRef
@@ -93,6 +177,14 @@ export function MathFunction(props: Props) {
 
       {/* Preview WYSIWYG — même rendu que les effets de taille */}
       <div class="math-text-preview" innerHTML={previewHtml()} />
+
+      {/* Courbe f(x) */}
+      <canvas
+        ref={curveRef}
+        class="math-curve-canvas"
+        width={800}
+        height={160}
+      />
 
       {/* Input */}
       <div class="math-input-row">
@@ -146,8 +238,8 @@ export function MathFunction(props: Props) {
         </div>
       </div>
 
-      <button class="btn btn-lavender" onClick={() => props.onApply(getProfile())}>
-        Appliquer f(x)
+      <button class="btn btn-lavender" onClick={() => props.onApply(getProfile(), expr(), { a: a(), b: b(), c: c() })}>
+        Enregistrer
       </button>
     </div>
   )

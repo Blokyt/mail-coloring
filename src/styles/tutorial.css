@@ -1,0 +1,30 @@
+/* ══ Tutoriel interactif — Memphis Pastel ══ */
+
+.tuto-overlay{position:fixed;inset:0;background:rgba(55,65,81,0.5);z-index:9000;pointer-events:auto;transition:clip-path .3s ease}
+.tuto-spotlight{position:fixed;z-index:9001;pointer-events:none;border-radius:var(--radius-md);box-shadow:0 0 0 3px var(--lavender),0 0 20px rgba(196,181,253,0.4);transition:all .3s ease}
+
+.tuto-bubble{position:fixed;z-index:9002;background:var(--white);border:var(--border) solid var(--soft-black);border-radius:var(--radius-md);box-shadow:var(--shadow-x) var(--shadow-y) 0 var(--lavender);padding:20px;width:340px;max-width:calc(100vw - 32px);pointer-events:auto}
+
+.tuto-module{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-xs);text-transform:uppercase;letter-spacing:1.5px;color:var(--lavender);margin-bottom:4px}
+
+.tuto-title{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-lg);color:var(--soft-black);margin-bottom:8px}
+
+.tuto-desc{font-family:'Fredoka',sans-serif;font-weight:500;font-size:var(--font-md);color:var(--soft-black);line-height:1.6;margin-bottom:16px}
+
+.tuto-footer{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+
+.tuto-progress{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-xs);color:var(--muted);white-space:nowrap}
+
+.tuto-actions{display:flex;align-items:center;gap:8px}
+
+.tuto-btn{font-size:var(--font-sm) !important;padding:4px 12px !important}
+
+.tuto-skip{font-family:'Fredoka',sans-serif;font-weight:600;font-size:var(--font-sm);color:var(--muted);background:none;border:none;cursor:pointer;padding:4px 8px;transition:color .1s}
+.tuto-skip:hover{color:var(--soft-black)}
+
+/* ── Welcome modal ── */
+.welcome-content{display:flex;flex-direction:column;align-items:center;text-align:center;padding:8px 24px 28px;gap:12px}
+.welcome-icon{font-size:56px;line-height:1}
+.welcome-title{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-lg);color:var(--soft-black)}
+.welcome-text{font-family:'Fredoka',sans-serif;font-weight:500;font-size:var(--font-md);color:var(--soft-black);line-height:1.6;max-width:340px}
+.welcome-actions{display:flex;gap:10px;margin-top:8px}

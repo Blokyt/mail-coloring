@@ -1,19 +1,15 @@
 import { createSignal, onMount } from 'solid-js'
 import { baseSize } from '../stores/editor'
+import { PREVIEW_SHORT } from '../data/preview'
 
 interface Props {
   onApply: (profile: number[]) => void
 }
 
-const PREVIEW_TEXT = 'Artlequin'
+const PREVIEW_TEXT = PREVIEW_SHORT
 const N_COLS = 50  // résolution du profil
 
-// Theme colors (matching CSS vars)
-const BG = '#faf9f7'       // --bg
-const GRID = '#e5e7eb'     // --separator
-const CURVE = '#c4b5fd'    // --lavender
-const MIDLINE = '#9ca3af'  // --muted
-const SOFT_BLACK = '#374151' // --soft-black
+import { CANVAS_BG as BG, CANVAS_GRID as GRID, CANVAS_CURVE as CURVE, CANVAS_MIDLINE as MIDLINE } from '../data/canvas-theme'
 
 export function ShapeCanvas(props: Props) {
   let canvasRef!: HTMLCanvasElement
@@ -189,7 +185,7 @@ export function ShapeCanvas(props: Props) {
       const frac = pIdx - lo
       const value = prof[lo] * (1 - frac) + prof[hi] * frac
 
-      const size = Math.max(8, Math.round(baseSize() + (value - 0.5) * maxAdd * 2))
+      const size = Math.max(10, Math.min(36, Math.round(baseSize() + (value - 0.5) * maxAdd * 2)))
       return `<span style="font-size:${size}px">${ch}</span>`
     }).join('')
   }
@@ -216,7 +212,7 @@ export function ShapeCanvas(props: Props) {
       />
 
       <div class="shape-canvas-actions">
-        <button class="btn btn-lavender" onClick={handleApply}>Appliquer</button>
+        <button class="btn btn-lavender" onClick={handleApply}>Enregistrer</button>
         <button class="btn" onClick={handleUndo}>Annuler</button>
         <button class="btn" onClick={handleClear}>Effacer</button>
       </div>

@@ -1,7 +1,7 @@
 import { For, Show, createSignal } from 'solid-js'
 import { FONTS, FONT_CATEGORIES, type FontEntry } from '../data/fonts'
 import { activeFont, setActiveFont } from '../stores/editor'
-import { fontFavorites, addFontFavorite, removeFontFavorite } from '../stores/favorites'
+import { fontFavorites, addFontFavorite, removeFontFavorite } from '../stores/workshops'
 import { applyInlineStyle } from './Editor'
 import { updateBuffer } from './Header'
 

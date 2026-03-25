@@ -1,7 +1,9 @@
-import { createSignal, onMount, onCleanup } from 'solid-js'
+import { createSignal, onMount, onCleanup, Show } from 'solid-js'
 import { getEditorEl, getAllEditorHtml, getAllEditorText, applyInlineStyle, execFormatCommand } from './Editor'
 import { undo, pushRedo, redo, pushUndo } from '../stores/editor'
+import { isAdmin, toggleAdmin } from '../stores/admin'
 import { showToast } from './Toast'
+import { startTutorial } from '../stores/tutorial'
 
 /* ══════════════════════════════════════════
    Buffer de style — etat independant du curseur.
@@ -125,7 +127,12 @@ export function Header() {
 
   return (
     <header class="header">
-      <span class="brand-pill">Mail Colorer</span>
+      <span class="brand-pill" onDblClick={toggleAdmin}>
+        Mail Colorer
+        <Show when={isAdmin()}>
+          <span class="admin-badge">ADMIN</span>
+        </Show>
+      </span>
 
       {/* ── Hotbar : buffer de style du prochain caractere ── */}
       <div class="status-bar">
@@ -202,6 +209,7 @@ export function Header() {
       </div>
 
       <span class="header-spacer" />
+      <button class="btn-icon tuto-trigger" title="Lancer le tutoriel" onClick={startTutorial}>?</button>
       <button class="btn-icon" title="Annuler (Ctrl+Z)" onClick={handleUndo}>↩</button>
       <button class="btn-icon" title="Retablir (Ctrl+Y)" onClick={handleRedo}>↪</button>
       <button class="btn btn-peach" style={{ "margin-left": "8px" }} onClick={handleCopy}>Copier</button>
