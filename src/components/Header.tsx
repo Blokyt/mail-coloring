@@ -209,6 +209,14 @@ export function Header() {
       </div>
 
       <span class="header-spacer" />
+      <button
+        class={`admin-toggle ${isAdmin() ? 'active' : ''}`}
+        onClick={toggleAdmin}
+        title={isAdmin() ? 'Desactiver le mode admin' : 'Activer le mode admin'}
+      >
+        <span class="admin-toggle-icon">{isAdmin() ? '\u2699' : '\u26BF'}</span>
+        <span class="admin-toggle-label">{isAdmin() ? 'Admin' : 'User'}</span>
+      </button>
       <button class="btn-icon tuto-trigger" title="Lancer le tutoriel" onClick={startTutorial}>?</button>
       <button class="btn-icon" title="Annuler (Ctrl+Z)" onClick={handleUndo}>↩</button>
       <button class="btn-icon" title="Retablir (Ctrl+Y)" onClick={handleRedo}>↪</button>

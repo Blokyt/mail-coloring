@@ -21,6 +21,11 @@
 .header{display:flex;align-items:center;gap:12px;padding:var(--header-pad) 20px;border-bottom:var(--border) solid var(--soft-black);background:var(--white);position:relative;z-index:2}
 .brand-pill{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-lg);background:var(--lavender);border:var(--border) solid var(--soft-black);border-radius:var(--radius-lg);padding:4px 18px;cursor:default;user-select:none}
 .admin-badge{font-size:var(--font-xs);font-weight:700;background:var(--peach);color:var(--soft-black);border:var(--border) solid var(--soft-black);border-radius:var(--radius-sm);padding:1px 6px;margin-left:8px;vertical-align:middle;text-transform:uppercase;letter-spacing:1px}
+.admin-toggle{display:flex;align-items:center;gap:4px;font-family:'Fredoka',sans-serif;font-weight:600;font-size:var(--font-xs);border:var(--border) solid var(--soft-black);border-radius:var(--radius-sm);padding:3px 8px;background:var(--bg);color:var(--muted);cursor:pointer;transition:all .15s;user-select:none}
+.admin-toggle:hover{background:var(--white);color:var(--soft-black)}
+.admin-toggle.active{background:var(--peach);color:var(--soft-black)}
+.admin-toggle-icon{font-size:12px;line-height:1}
+.admin-toggle-label{text-transform:uppercase;letter-spacing:.5px}
 .header-spacer{flex:1}
 
 /* ── Status bar (formatage courant) ── */
