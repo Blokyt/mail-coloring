@@ -5,7 +5,7 @@ export interface TutorialStep {
   title: string
   description: string
   targetSelector: string
-  position: 'top' | 'bottom' | 'left' | 'right'
+  position: 'top' | 'bottom' | 'left' | 'right' | 'bottom-right'
   action?: 'click' | 'type' | 'select' | 'dblclick' | 'none'
   module: string
 }
@@ -14,24 +14,24 @@ export interface TutorialStep {
 export const TUTORIAL_STEPS: TutorialStep[] = [
   // Module A — Decouverte
   { id: 'welcome', module: 'Decouverte', title: 'Bienvenue !', description: 'Mail Colorer vous permet de creer des emails colores directement compatibles Outlook. Suivez ce guide pour decouvrir toutes les possibilites !', targetSelector: '.brand-pill', position: 'bottom', action: 'none' },
-  { id: 'editor', module: 'Decouverte', title: 'L\'editeur', description: 'C\'est ici que vous ecrivez votre email. Le texte se repartit sur 3 colonnes visibles et defilera automatiquement.', targetSelector: '.editor-viewport', position: 'top', action: 'none' },
+  { id: 'editor', module: 'Decouverte', title: 'L\'editeur', description: 'C\'est ici que vous ecrivez votre email. Le texte se repartit sur 3 colonnes visibles et defilera automatiquement.', targetSelector: '.editor-viewport', position: 'bottom-right', action: 'none' },
   { id: 'hotbar', module: 'Decouverte', title: 'La barre de style', description: 'Cette barre montre le style du prochain caractere que vous taperez : police, taille, couleur, gras, italique...', targetSelector: '.status-bar', position: 'bottom', action: 'none' },
   { id: 'panel-left', module: 'Decouverte', title: 'Effets de couleur', description: 'Les effets de couleur sont a gauche. Chaque tag represente un cycle de couleurs different.', targetSelector: '.side-panel-left', position: 'right', action: 'none' },
   { id: 'panel-right', module: 'Decouverte', title: 'Effets de taille', description: 'Les effets de taille sont a droite. La courbe montre comment la taille varie sur chaque caractere.', targetSelector: '.side-panel-right', position: 'left', action: 'none' },
 
   // Module B — Colorier
-  { id: 'type-word', module: 'Colorier', title: 'Ecrivez un mot', description: 'Cliquez dans l\'editeur et tapez "Bonjour" pour commencer.', targetSelector: '.editor-viewport', position: 'top', action: 'type' },
-  { id: 'select-word', module: 'Colorier', title: 'Selectionnez le mot', description: 'Double-cliquez sur "Bonjour" pour le selectionner, ou faites un cliquer-glisser.', targetSelector: '.editor-viewport', position: 'top', action: 'select' },
+  { id: 'type-word', module: 'Colorier', title: 'Ecrivez un mot', description: 'Cliquez dans l\'editeur et tapez "Bonjour" pour commencer.', targetSelector: '.editor-viewport', position: 'bottom-right', action: 'type' },
+  { id: 'select-word', module: 'Colorier', title: 'Selectionnez le mot', description: 'Double-cliquez sur "Bonjour" pour le selectionner, ou faites un cliquer-glisser.', targetSelector: '.editor-viewport', position: 'bottom-right', action: 'select' },
   { id: 'apply-color', module: 'Colorier', title: 'Appliquer un effet couleur', description: 'Avec votre mot selectionne, cliquez sur un effet dans le panneau de gauche (ex: "Arc-en-ciel").', targetSelector: '.side-panel-left', position: 'right', action: 'click' },
-  { id: 'see-result', module: 'Colorier', title: 'Resultat !', description: 'Chaque lettre a maintenant sa propre couleur ! Vous pouvez aussi appliquer un effet de taille de la meme maniere.', targetSelector: '.editor-viewport', position: 'top', action: 'none' },
+  { id: 'see-result', module: 'Colorier', title: 'Resultat !', description: 'Chaque lettre a maintenant sa propre couleur ! Vous pouvez aussi appliquer un effet de taille de la meme maniere.', targetSelector: '.editor-viewport', position: 'bottom-right', action: 'none' },
   { id: 'apply-size', module: 'Colorier', title: 'Effet de taille', description: 'Selectionnez a nouveau le mot, puis cliquez sur un effet de taille a droite (ex: "Vague").', targetSelector: '.side-panel-right', position: 'left', action: 'click' },
-  { id: 'combine', module: 'Colorier', title: 'Combiner !', description: 'Vous pouvez combiner couleur ET taille sur le meme texte. Les deux effets s\'appliquent independamment.', targetSelector: '.editor-viewport', position: 'top', action: 'none' },
+  { id: 'combine', module: 'Colorier', title: 'Combiner !', description: 'Vous pouvez combiner couleur ET taille sur le meme texte. Les deux effets s\'appliquent independamment.', targetSelector: '.editor-viewport', position: 'bottom-right', action: 'none' },
 
   // Module C — Mode arme (toggle)
   { id: 'arm-effect', module: 'Mode arme', title: 'Armer un effet', description: 'Sans selectionner de texte, cliquez sur un effet couleur dans le panneau. Il devient "arme" (bordure orange).', targetSelector: '.side-panel-left', position: 'right', action: 'click' },
   { id: 'armed-state', module: 'Mode arme', title: 'Effet arme', description: 'L\'effet est maintenant arme — une bordure orange le signale. Il sera applique a chaque double-clic.', targetSelector: '.side-panel-left', position: 'right', action: 'none' },
-  { id: 'dblclick', module: 'Mode arme', title: 'Double-cliquez !', description: 'Double-cliquez sur un mot dans l\'editeur pour lui appliquer l\'effet arme instantanement.', targetSelector: '.editor-viewport', position: 'top', action: 'dblclick' },
-  { id: 'armed-magic', module: 'Mode arme', title: 'Magique !', description: 'Le mot est colorie ! Le double-clic combine le style de la hotbar + les effets armes. Cliquez a nouveau sur l\'effet pour le desarmer.', targetSelector: '.editor-viewport', position: 'top', action: 'none' },
+  { id: 'dblclick', module: 'Mode arme', title: 'Double-cliquez !', description: 'Double-cliquez sur un mot dans l\'editeur pour lui appliquer l\'effet arme instantanement.', targetSelector: '.editor-viewport', position: 'bottom-right', action: 'dblclick' },
+  { id: 'armed-magic', module: 'Mode arme', title: 'Magique !', description: 'Le mot est colorie ! Le double-clic combine le style de la hotbar + les effets armes. Cliquez a nouveau sur l\'effet pour le desarmer.', targetSelector: '.editor-viewport', position: 'bottom-right', action: 'none' },
 
   // Module D — Toolbar
   { id: 'toolbar-format', module: 'Toolbar', title: 'Gras, Italique, Souligne...', description: 'Ces boutons changent le style du buffer : les prochains caracteres tapes auront ce formatage.', targetSelector: '.toolbar-row', position: 'bottom', action: 'none' },

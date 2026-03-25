@@ -58,6 +58,10 @@ export function TutorialOverlay() {
     } else if (pos === 'left') {
       t = rect.top
       l = rect.left - gap - bw
+    } else if (pos === 'bottom-right') {
+      // Pour les grands elements (editeur) : bulle en bas a droite, hors du chemin
+      t = vh - bh - margin
+      l = vw - bw - margin
     }
 
     // Clamper dans le viewport
