@@ -78,7 +78,15 @@ export function adminRemoveColorEffect(id: string) {
 /* ── Mutations — Size Effect Names ── */
 
 export function adminRenameSizeEffect(id: string, name: string) {
-  setAdminData(d => ({ ...d, sizeEffectNames: { ...d.sizeEffectNames, [id]: name } }))
+  if (!name) {
+    // Reset : supprimer l'override
+    setAdminData(d => {
+      const { [id]: _, ...rest } = d.sizeEffectNames
+      return { ...d, sizeEffectNames: rest }
+    })
+  } else {
+    setAdminData(d => ({ ...d, sizeEffectNames: { ...d.sizeEffectNames, [id]: name } }))
+  }
 }
 
 /* ── Mutations — Emojis ── */

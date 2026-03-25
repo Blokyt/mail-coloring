@@ -65,6 +65,7 @@
 .admin-footer{display:flex;align-items:center;gap:12px;padding:14px 24px;border-top:var(--border) solid var(--separator);background:var(--bg)}
 .admin-footer-hint{font-family:'Fredoka',sans-serif;font-weight:500;font-size:var(--font-xs);color:var(--muted)}
 .admin-css-actions{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.admin-sparkline{width:80px;height:24px;flex-shrink:0}
 .header-spacer{flex:1}
 
 /* ── Status bar (formatage courant) ── */

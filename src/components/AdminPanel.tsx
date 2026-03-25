@@ -4,11 +4,14 @@ import { isAdmin } from '../stores/admin'
 import {
   adminData, saveAdminData, loadAdminData,
   adminSetColorEffect, adminRemoveColorEffect,
+  adminRenameSizeEffect,
   adminAddEmoji, adminRemoveEmoji,
   adminSetCss,
   type AdminColorEffect, type AdminEmoji,
 } from '../stores/admin-data'
-import { COLOR_EFFECTS } from '../engine/effects'
+import { COLOR_EFFECTS, SIZE_EFFECTS } from '../engine/effects'
+import { sparklineFromFn } from '../engine/sparkline'
+import { SIZE_ACCENTS } from '../data/accents'
 import { DEFAULT_EMOJIS } from '../data/emojis'
 import { VENETIAN_PALETTE } from '../data/colors'
 import { showToast } from './Toast'
@@ -288,6 +291,45 @@ export function AdminPanel() {
                   <button class="btn btn-lavender tuto-btn" onClick={addNewEffect} disabled={!newName().trim() || newColors().length === 0}>Ajouter</button>
                 </div>
               </div>
+
+              {/* ── Effets taille ── */}
+              <div class="admin-section-label" style={{ "margin-top": "20px" }}>Effets de taille</div>
+              <For each={Object.entries(SIZE_EFFECTS)}>
+                {([id, effect]) => {
+                  const [editing, setEditing] = createSignal(false)
+                  const [name, setName] = createSignal(adminData().sizeEffectNames[id] ?? effect.name)
+                  const path = () => sparklineFromFn((i) => effect.getOffset(i))
+                  const accent = () => SIZE_ACCENTS[id] ?? 'var(--lavender)'
+                  const isRenamed = () => !!adminData().sizeEffectNames[id]
+                  return (
+                    <div class="admin-effect-row">
+                      <Show when={editing()} fallback={
+                        <>
+                          <span class="admin-effect-name">
+                            {adminData().sizeEffectNames[id] ?? effect.name}
+                            <Show when={isRenamed()}><span class="admin-modified-badge">renomme</span></Show>
+                          </span>
+                          <svg class="admin-sparkline" viewBox="0 0 100 24" preserveAspectRatio="none">
+                            <path d={path()} fill="none" stroke={accent()} stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+                          </svg>
+                          <div class="admin-effect-actions">
+                            <button class="btn tuto-btn" onClick={() => setEditing(true)}>Renommer</button>
+                            <Show when={isRenamed()}>
+                              <button class="tuto-skip" onClick={() => { adminRenameSizeEffect(id, ''); setName(effect.name) }}>Reset</button>
+                            </Show>
+                          </div>
+                        </>
+                      }>
+                        <div class="admin-edit-form" style={{ "flex-direction": "row", "align-items": "center", gap: "8px" }}>
+                          <input class="naming-input" value={name()} onInput={(e) => setName(e.currentTarget.value)} style={{ flex: "1" }} />
+                          <button class="btn btn-lavender tuto-btn" onClick={() => { adminRenameSizeEffect(id, name()); setEditing(false) }}>OK</button>
+                          <button class="btn tuto-btn" onClick={() => { setName(adminData().sizeEffectNames[id] ?? effect.name); setEditing(false) }}>Annuler</button>
+                        </div>
+                      </Show>
+                    </div>
+                  )
+                }}
+              </For>
             </div>
           </Show>
 
