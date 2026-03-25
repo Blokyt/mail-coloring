@@ -20,12 +20,13 @@
 /* ── Header ── */
 .header{display:flex;align-items:center;gap:12px;padding:var(--header-pad) 20px;border-bottom:var(--border) solid var(--soft-black);background:var(--white);position:relative;z-index:2}
 .brand-pill{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-lg);background:var(--lavender);border:var(--border) solid var(--soft-black);border-radius:var(--radius-lg);padding:4px 18px;cursor:default;user-select:none}
-.admin-badge{font-size:var(--font-xs);font-weight:700;background:var(--peach);color:var(--soft-black);border:var(--border) solid var(--soft-black);border-radius:var(--radius-sm);padding:1px 6px;margin-left:8px;vertical-align:middle;text-transform:uppercase;letter-spacing:1px}
-.admin-toggle{display:flex;align-items:center;gap:4px;font-family:'Fredoka',sans-serif;font-weight:600;font-size:var(--font-xs);border:var(--border) solid var(--soft-black);border-radius:var(--radius-sm);padding:3px 8px;background:var(--bg);color:var(--muted);cursor:pointer;transition:all .15s;user-select:none}
-.admin-toggle:hover{background:var(--white);color:var(--soft-black)}
-.admin-toggle.active{background:var(--peach);color:var(--soft-black)}
-.admin-toggle-icon{font-size:12px;line-height:1}
-.admin-toggle-label{text-transform:uppercase;letter-spacing:.5px}
+/* ── Admin slider (bas gauche) ── */
+.admin-slider-wrap{position:fixed;bottom:12px;left:12px;display:flex;align-items:center;gap:6px;cursor:pointer;z-index:199;user-select:none}
+.admin-slider-track{width:36px;height:20px;border-radius:10px;background:var(--separator);border:2px solid var(--soft-black);position:relative;transition:background .2s}
+.admin-slider-track.active{background:var(--peach)}
+.admin-slider-thumb{position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--white);border:2px solid var(--soft-black);transition:left .2s}
+.admin-slider-track.active .admin-slider-thumb{left:18px}
+.admin-slider-label{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
 
 /* ── Admin Panel ── */
 .admin-panel-trigger{position:fixed;bottom:12px;left:16px;font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-sm);padding:6px 14px;background:var(--peach);border:var(--border) solid var(--soft-black);border-radius:var(--radius-md);box-shadow:var(--shadow-x) var(--shadow-y) 0 var(--shadow-color);cursor:pointer;z-index:200;transition:transform .1s,box-shadow .1s}

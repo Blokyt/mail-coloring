@@ -1,7 +1,6 @@
 import { createSignal, Show } from 'solid-js'
 import { getEditorEl, getAllEditorHtml, getAllEditorText, applyInlineStyle, execFormatCommand } from './Editor'
 import { undo, pushRedo, redo, pushUndo } from '../stores/editor'
-import { isAdmin, toggleAdmin } from '../stores/admin'
 import { showToast } from './Toast'
 import { startTutorial } from '../stores/tutorial'
 
@@ -125,11 +124,8 @@ export function Header() {
 
   return (
     <header class="header">
-      <span class="brand-pill" onDblClick={toggleAdmin}>
+      <span class="brand-pill">
         Mail Colorer
-        <Show when={isAdmin()}>
-          <span class="admin-badge">ADMIN</span>
-        </Show>
       </span>
 
       {/* ── Hotbar : buffer de style du prochain caractere ── */}
@@ -207,14 +203,6 @@ export function Header() {
       </div>
 
       <span class="header-spacer" />
-      <button
-        class={`admin-toggle ${isAdmin() ? 'active' : ''}`}
-        onClick={toggleAdmin}
-        title={isAdmin() ? 'Desactiver le mode admin' : 'Activer le mode admin'}
-      >
-        <span class="admin-toggle-icon">{isAdmin() ? '\u2699' : '\u26BF'}</span>
-        <span class="admin-toggle-label">{isAdmin() ? 'Admin' : 'User'}</span>
-      </button>
       <button class="btn-icon tuto-trigger" title="Lancer le tutoriel" onClick={startTutorial}>?</button>
       <button class="btn-icon" title="Annuler (Ctrl+Z)" onClick={handleUndo}>↩</button>
       <button class="btn-icon" title="Retablir (Ctrl+Y)" onClick={handleRedo}>↪</button>

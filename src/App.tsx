@@ -1,5 +1,6 @@
 import { Header } from './components/Header'
 import { loadAdminData } from './stores/admin-data'
+import { isAdmin, toggleAdmin } from './stores/admin'
 import { SidePanel } from './components/SidePanel'
 import { ToolbarPanel } from './components/ToolbarPanel'
 import { Editor } from './components/Editor'
@@ -36,6 +37,14 @@ export default function App() {
       <TutorialOverlay />
       <WelcomeModal />
       <AdminPanel />
+
+      {/* Slider admin fixe en bas a gauche */}
+      <div class="admin-slider-wrap" onClick={toggleAdmin}>
+        <div class={`admin-slider-track ${isAdmin() ? 'active' : ''}`}>
+          <div class="admin-slider-thumb" />
+        </div>
+        <span class="admin-slider-label">{isAdmin() ? 'Admin' : 'User'}</span>
+      </div>
     </>
   )
 }
