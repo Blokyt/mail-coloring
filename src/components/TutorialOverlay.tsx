@@ -4,11 +4,28 @@ import {
   tutorialActive, currentStep, TUTORIAL_STEPS,
   nextStep, prevStep, skipTutorial,
 } from '../stores/tutorial'
+import { isAdmin } from '../stores/admin'
 import '../styles/tutorial.css'
+
+/* ── Positions sauvegardees (admin) ── */
+const POS_KEY = 'artlequin_tutorial_positions'
+
+type SavedPos = { bubbleTop: number; bubbleLeft: number; spotTop: number; spotLeft: number; spotW: number; spotH: number }
+
+function loadPositions(): Record<string, SavedPos> {
+  try { return JSON.parse(localStorage.getItem(POS_KEY) || '{}') } catch { return {} }
+}
+
+function savePositions(data: Record<string, SavedPos>) {
+  localStorage.setItem(POS_KEY, JSON.stringify(data))
+}
 
 export function TutorialOverlay() {
   const [spotRect, setSpotRect] = createSignal({ top: 0, left: 0, width: 0, height: 0 })
-  const [bubbleStyle, setBubbleStyle] = createSignal<Record<string, string>>({})
+  const [bubblePos, setBubblePos] = createSignal({ top: 0, left: 0 })
+  const [dragging, setDragging] = createSignal<'bubble' | 'spot' | null>(null)
+  const [dragOffset, setDragOffset] = createSignal({ x: 0, y: 0 })
+  const [dirty, setDirty] = createSignal(false)
 
   const step = () => TUTORIAL_STEPS[currentStep()]
   const total = TUTORIAL_STEPS.length
@@ -18,11 +35,22 @@ export function TutorialOverlay() {
   function measure() {
     const s = step()
     if (!s) return
+
+    // Verifier si on a une position sauvegardee
+    const saved = loadPositions()[s.id]
+    if (saved) {
+      setSpotRect({ top: saved.spotTop, left: saved.spotLeft, width: saved.spotW, height: saved.spotH })
+      setBubblePos({ top: saved.bubbleTop, left: saved.bubbleLeft })
+      setDirty(false)
+      return
+    }
+
     const el = document.querySelector(s.targetSelector)
     if (!el) {
-      // Element absent (ex: modal fermee) — centrer la bulle
-      setSpotRect({ top: 0, left: 0, width: window.innerWidth, height: window.innerHeight })
-      setBubbleStyle({ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' })
+      const vw = window.innerWidth, vh = window.innerHeight
+      setSpotRect({ top: 0, left: 0, width: vw, height: vh })
+      setBubblePos({ top: vh / 2 - 100, left: vw / 2 - 170 })
+      setDirty(false)
       return
     }
 
@@ -35,63 +63,126 @@ export function TutorialOverlay() {
       height: rect.height + pad * 2,
     })
 
-    // Positionner la bulle — toujours en top/left avec clamping viewport
+    // Positionner la bulle — naturellement proche de la cible, biais vers le centre
     const pos = s.position
     const gap = 16
-    const bw = 340 // largeur de la bulle (CSS width)
-    const bh = 200 // hauteur estimee de la bulle
+    const bw = 340
+    const bh = 200
     const margin = 16
     const vw = window.innerWidth
     const vh = window.innerHeight
+    const cx = vw / 2, cy = vh / 2 // centre viewport
 
     let t = 0, l = 0
 
     if (pos === 'bottom') {
       t = rect.bottom + gap
-      l = rect.left
+      l = rect.left + rect.width / 2 - bw / 2
     } else if (pos === 'top') {
       t = rect.top - gap - bh
-      l = rect.left
+      l = rect.left + rect.width / 2 - bw / 2
     } else if (pos === 'right') {
-      t = rect.top
+      t = rect.top + rect.height / 2 - bh / 2
       l = rect.right + gap
     } else if (pos === 'left') {
-      t = rect.top
+      t = rect.top + rect.height / 2 - bh / 2
       l = rect.left - gap - bw
     } else if (pos === 'bottom-right') {
-      // Pour les grands elements (editeur) : bulle en bas a droite, hors du chemin
-      t = vh - bh - margin
-      l = vw - bw - margin
+      // Grands elements : bulle en bas a droite mais pas collee au bord
+      t = vh - bh - 60
+      l = vw - bw - 60
     }
+
+    // Biais vers le centre (30%) pour un rendu plus naturel
+    t = t + (cy - t) * 0.15
+    l = l + (cx - l) * 0.15
 
     // Clamper dans le viewport
     t = Math.max(margin, Math.min(t, vh - bh - margin))
     l = Math.max(margin, Math.min(l, vw - bw - margin))
 
-    setBubbleStyle({ top: `${t}px`, left: `${l}px` })
+    setBubblePos({ top: Math.round(t), left: Math.round(l) })
+    setDirty(false)
 
-    // Scroll si hors vue
-    if (rect.top < 0 || rect.bottom > window.innerHeight) {
+    if (rect.top < 0 || rect.bottom > vh) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }
   }
 
   createEffect(() => {
     if (!tutorialActive()) return
-    // Re-mesurer a chaque changement d'etape
     void currentStep()
-    // Petit delai pour laisser le DOM se stabiliser (ex: ouverture de modal)
     const t = setTimeout(measure, 100)
     onCleanup(() => clearTimeout(t))
   })
 
-  // Re-mesurer au resize
   createEffect(() => {
     if (!tutorialActive()) return
     const handler = () => measure()
     window.addEventListener('resize', handler)
     onCleanup(() => window.removeEventListener('resize', handler))
   })
+
+  // ── Drag handlers ──
+  function onMouseDown(target: 'bubble' | 'spot', e: MouseEvent) {
+    if (!isAdmin()) return
+    e.preventDefault()
+    e.stopPropagation()
+    setDragging(target)
+    if (target === 'bubble') {
+      setDragOffset({ x: e.clientX - bubblePos().left, y: e.clientY - bubblePos().top })
+    } else {
+      setDragOffset({ x: e.clientX - spotRect().left, y: e.clientY - spotRect().top })
+    }
+  }
+
+  createEffect(() => {
+    if (!dragging()) return
+
+    const onMove = (e: MouseEvent) => {
+      const d = dragging()
+      if (!d) return
+      setDirty(true)
+      if (d === 'bubble') {
+        setBubblePos({ top: e.clientY - dragOffset().y, left: e.clientX - dragOffset().x })
+      } else {
+        const sr = spotRect()
+        setSpotRect({ ...sr, top: e.clientY - dragOffset().y, left: e.clientX - dragOffset().x })
+      }
+    }
+
+    const onUp = () => setDragging(null)
+
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    onCleanup(() => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    })
+  })
+
+  function saveCurrentPos() {
+    const s = step()
+    if (!s) return
+    const positions = loadPositions()
+    const sr = spotRect()
+    const bp = bubblePos()
+    positions[s.id] = {
+      bubbleTop: bp.top, bubbleLeft: bp.left,
+      spotTop: sr.top, spotLeft: sr.left, spotW: sr.width, spotH: sr.height,
+    }
+    savePositions(positions)
+    setDirty(false)
+  }
+
+  function resetCurrentPos() {
+    const s = step()
+    if (!s) return
+    const positions = loadPositions()
+    delete positions[s.id]
+    savePositions(positions)
+    measure()
+  }
 
   const r = () => spotRect()
   const clipPath = () => {
@@ -110,13 +201,25 @@ export function TutorialOverlay() {
     <Show when={tutorialActive()}>
       <Portal>
         <div class="tuto-overlay" style={{ "clip-path": clipPath() }} />
-        <div class="tuto-spotlight" style={{
-          top: `${r().top}px`,
-          left: `${r().left}px`,
-          width: `${r().width}px`,
-          height: `${r().height}px`,
-        }} />
-        <div class="tuto-bubble" style={bubbleStyle()}>
+        <div
+          class={`tuto-spotlight ${isAdmin() ? 'tuto-draggable' : ''}`}
+          style={{
+            top: `${r().top}px`,
+            left: `${r().left}px`,
+            width: `${r().width}px`,
+            height: `${r().height}px`,
+          }}
+          onMouseDown={(e) => onMouseDown('spot', e)}
+        />
+        <div
+          class={`tuto-bubble ${isAdmin() ? 'tuto-draggable' : ''}`}
+          style={{ top: `${bubblePos().top}px`, left: `${bubblePos().left}px` }}
+          onMouseDown={(e) => {
+            // Ne pas drag si on clique sur un bouton
+            if ((e.target as HTMLElement).closest('button')) return
+            onMouseDown('bubble', e)
+          }}
+        >
           <div class="tuto-module">{module()}</div>
           <div class="tuto-title">{step()?.title}</div>
           <div class="tuto-desc">{step()?.description}</div>
@@ -132,6 +235,15 @@ export function TutorialOverlay() {
               <button class="tuto-skip" onClick={skipTutorial}>Passer</button>
             </div>
           </div>
+          <Show when={isAdmin()}>
+            <div class="tuto-admin-bar">
+              <span class="tuto-admin-hint">Admin : glisser la bulle ou le spotlight</span>
+              <Show when={dirty()}>
+                <button class="btn tuto-btn" onClick={saveCurrentPos}>Sauver position</button>
+              </Show>
+              <button class="tuto-skip" onClick={resetCurrentPos}>Reset</button>
+            </div>
+          </Show>
         </div>
       </Portal>
     </Show>
