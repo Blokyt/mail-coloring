@@ -106,6 +106,24 @@ export const COLOR_EFFECTS: Record<string, ColorEffect> = {
   },
 }
 
+/** Retourne les effets couleur effectifs (hardcoded + overrides admin) */
+export function getEffectiveColorEffects(adminOverrides?: Record<string, { name: string; colors: string[] }>): Record<string, ColorEffect> {
+  if (!adminOverrides || Object.keys(adminOverrides).length === 0) return COLOR_EFFECTS
+  const result: Record<string, ColorEffect> = {}
+  // Base effects, overridden if admin has changes
+  for (const [id, effect] of Object.entries(COLOR_EFFECTS)) {
+    const ov = adminOverrides[id]
+    result[id] = ov ? { ...effect, name: ov.name, colors: ov.colors } : effect
+  }
+  // Admin-only effects (not in base)
+  for (const [id, ov] of Object.entries(adminOverrides)) {
+    if (!COLOR_EFFECTS[id]) {
+      result[id] = { name: ov.name, icon: '', colors: ov.colors }
+    }
+  }
+  return result
+}
+
 // ============================================
 // EFFETS TAILLE PRÉDÉFINIS
 // ============================================

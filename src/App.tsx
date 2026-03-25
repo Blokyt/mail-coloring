@@ -1,5 +1,5 @@
-import { onMount } from 'solid-js'
 import { Header } from './components/Header'
+import { loadAdminData } from './stores/admin-data'
 import { SidePanel } from './components/SidePanel'
 import { ToolbarPanel } from './components/ToolbarPanel'
 import { Editor } from './components/Editor'
@@ -7,7 +7,11 @@ import { CssTweaker } from './components/CssTweaker'
 import { Toast } from './components/Toast'
 import { TutorialOverlay } from './components/TutorialOverlay'
 import { WelcomeModal } from './components/WelcomeModal'
+import { AdminPanel } from './components/AdminPanel'
 import './styles/app.css'
+
+// Charger les donnees admin au demarrage
+loadAdminData()
 
 export default function App() {
   return (
@@ -31,6 +35,7 @@ export default function App() {
       <Toast />
       <TutorialOverlay />
       <WelcomeModal />
+      <AdminPanel />
     </>
   )
 }
