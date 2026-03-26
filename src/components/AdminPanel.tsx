@@ -298,7 +298,7 @@ export function AdminPanel() {
                 {([id, effect]) => {
                   const [editing, setEditing] = createSignal(false)
                   const [name, setName] = createSignal(adminData().sizeEffectNames[id] ?? effect.name)
-                  const path = () => sparklineFromFn((i) => effect.getOffset(i))
+                  const path = () => sparklineFromFn((t) => effect.getShape(t))
                   const accent = () => SIZE_ACCENTS[id] ?? 'var(--lavender)'
                   const isRenamed = () => !!adminData().sizeEffectNames[id]
                   return (

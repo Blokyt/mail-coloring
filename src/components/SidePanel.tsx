@@ -1,7 +1,7 @@
 import { For, Show, createSignal, createEffect, on } from 'solid-js'
 import { COLOR_EFFECTS, SIZE_EFFECTS, applyEffects, applyComposedEffect } from '../engine/effects'
 import { sparklineFromEffect } from '../engine/sparkline'
-import { activeColorEffect, setActiveColorEffect, activeSizeEffect, setActiveSizeEffect, baseSize, setCustomSizeProfile } from '../stores/editor'
+import { activeColorEffect, setActiveColorEffect, activeSizeEffect, setActiveSizeEffect, baseSize, sizeAmplitude, setCustomSizeProfile } from '../stores/editor'
 import { getFavorites, getBaseEffects, getPersoEffects, history, pushHistory, type WorkshopEffect } from '../stores/workshops'
 import { getSelectedText, applyColorToSelection, applySizeToSelection, replaceSelectionWithHtml } from './Editor'
 import { showToast } from './Toast'
@@ -26,7 +26,7 @@ function renderColorName(effect: WorkshopEffect): string {
 // ── Composant ──
 
 export function SidePanel(props: { side: 'left' | 'right' }) {
-  const opts = () => ({ baseSize: baseSize() })
+  const opts = () => ({ baseSize: baseSize(), amplitude: sizeAmplitude() })
   const isLeft = () => props.side === 'left'
 
   const isColorType = (e: WorkshopEffect) => e.type === 'color' || e.type === 'custom-color'
@@ -60,23 +60,24 @@ export function SidePanel(props: { side: 'left' | 'right' }) {
         setCustomSizeProfile(null)
         pushHistory(effect)
         applySizeToSelection(
-          (charIdx) => sizeEffect.getOffset(charIdx),
+          (charIdx, total) => {
+            const t = total <= 1 ? 0 : charIdx / (total - 1)
+            return opts().amplitude * sizeEffect.getShape(t)
+          },
           opts().baseSize
         )
       } else if (effect.type === 'custom-size' && effect.profile) {
         pushHistory(effect)
         const profile = effect.profile
-        // Detecter normalise [0,1] (ShapeCanvas) vs brut (MathFunction)
-        const isNorm = profile.every(v => v >= -0.01 && v <= 1.01)
-        const maxAdd = isNorm ? (effect.mathParams?.a ?? 40) : 1
+        const amp = opts().amplitude
         applySizeToSelection(
-          (charIdx) => {
-            const t = Math.min(charIdx / (profile.length - 1), 1)
+          (charIdx, total) => {
+            const t = total <= 1 ? 0 : charIdx / (total - 1)
             const pIdx = t * (profile.length - 1)
             const lo = Math.floor(pIdx)
             const hi = Math.min(lo + 1, profile.length - 1)
             const frac = pIdx - lo
-            return (profile[lo] * (1 - frac) + profile[hi] * frac) * maxAdd
+            return (profile[lo] * (1 - frac) + profile[hi] * frac) * amp
           },
           opts().baseSize
         )

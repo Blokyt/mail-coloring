@@ -1,5 +1,5 @@
 import { createSignal, onMount } from 'solid-js'
-import { baseSize } from '../stores/editor'
+import { baseSize, sizeAmplitude } from '../stores/editor'
 import { PREVIEW_SHORT } from '../data/preview'
 
 interface Props {
@@ -169,15 +169,14 @@ export function ShapeCanvas(props: Props) {
     drawCanvas()
   }
 
-  /** HTML de preview — même format que applySizeProfile */
+  /** HTML de preview — baseSize + amplitude * shape */
   const previewHtml = (): string => {
     const prof = profile()
     const chars = [...PREVIEW_TEXT].filter(ch => ch !== ' ')
     const n = chars.length
-    const maxAdd = 40 // amplitude max en px
+    const amp = sizeAmplitude()
 
     return chars.map((ch, i) => {
-      // Interpoler le profil pour cette lettre
       const t = n === 1 ? 0 : i / (n - 1)
       const pIdx = t * (prof.length - 1)
       const lo = Math.floor(pIdx)
@@ -185,7 +184,7 @@ export function ShapeCanvas(props: Props) {
       const frac = pIdx - lo
       const value = prof[lo] * (1 - frac) + prof[hi] * frac
 
-      const size = Math.max(10, Math.min(36, Math.round(baseSize() + (value - 0.5) * maxAdd * 2)))
+      const size = Math.max(8, Math.round(baseSize() + amp * value))
       return `<span style="font-size:${size}px">${ch}</span>`
     }).join('')
   }

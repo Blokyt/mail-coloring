@@ -4,16 +4,17 @@ import type { WorkshopEffect } from '../stores/workshops'
 const DEFAULT_SAMPLES = 20
 
 /**
- * Genere un path SVG sparkline a partir d'une fonction d'offset.
+ * Genere un path SVG sparkline a partir d'une fonction shape(t) → [0,1].
  * Le viewBox attendu est "0 0 100 24".
  */
 export function sparklineFromFn(
-  getOffset: (i: number) => number,
+  getShape: (t: number) => number,
   samples: number = DEFAULT_SAMPLES,
 ): string {
   const values: number[] = []
   for (let i = 0; i < samples; i++) {
-    values.push(getOffset(i))
+    const t = samples <= 1 ? 0 : i / (samples - 1)
+    values.push(getShape(t))
   }
   return valuesToPath(values)
 }
@@ -23,11 +24,17 @@ export function sparklineFromFn(
  */
 export function sparklineFromEffect(effect: WorkshopEffect): string {
   if (effect.type === 'size' && SIZE_EFFECTS[effect.id]) {
-    return sparklineFromFn((i) => SIZE_EFFECTS[effect.id].getOffset(i))
+    return sparklineFromFn((t) => SIZE_EFFECTS[effect.id].getShape(t))
   }
   if (effect.type === 'custom-size' && effect.profile) {
     const profile = effect.profile
-    return sparklineFromFn((i) => interpolateProfile(profile, i, DEFAULT_SAMPLES))
+    return sparklineFromFn((t) => {
+      const pIdx = t * (profile.length - 1)
+      const lo = Math.floor(pIdx)
+      const hi = Math.min(lo + 1, profile.length - 1)
+      const frac = pIdx - lo
+      return profile[lo] * (1 - frac) + profile[hi] * frac
+    })
   }
   return ''
 }

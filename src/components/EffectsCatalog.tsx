@@ -6,7 +6,7 @@ import {
   getPersoEffects, toggleFavorite, isFavorite,
   addPersoEffect, removePersoEffect,
 } from '../stores/workshops'
-import { baseSize } from '../stores/editor'
+import { baseSize, sizeAmplitude } from '../stores/editor'
 import { PREVIEW_WORDS } from '../data/preview'
 import { MathFunction } from './MathFunction'
 import { ShapeCanvas } from './ShapeCanvas'
@@ -51,7 +51,7 @@ function ColorEffectCard(props: { id: string; name: string }) {
     <div class="catalog-card">
       <div class="catalog-card-header">
         <span class="catalog-card-name">
-          <EffectPreview text={props.name} colorEffectId={props.id} options={{ baseSize: baseSize() }} />
+          <EffectPreview text={props.name} colorEffectId={props.id} options={{ baseSize: baseSize(), amplitude: sizeAmplitude() }} />
         </span>
         <button class={`catalog-fav ${fav() ? 'is-fav' : ''}`} onClick={() => toggleFavorite(props.id, 'base')} title={fav() ? 'Retirer des favoris' : 'Ajouter aux favoris'}>
           {fav() ? '\u2605' : '\u2606'}
@@ -77,7 +77,7 @@ function ColorEffectCard(props: { id: string; name: string }) {
 function SizeEffectCard(props: { id: string; name: string }) {
   const fav = () => isFavorite(props.id, 'base')
   const se = SIZE_EFFECTS[props.id]
-  const path = () => se ? sparklineFromFn((i) => se.getOffset(i)) : ''
+  const path = () => se ? sparklineFromFn((t) => se.getShape(t)) : ''
   const accent = () => SIZE_ACCENTS[props.id] ?? 'var(--lavender)'
 
   return (
@@ -95,7 +95,7 @@ function SizeEffectCard(props: { id: string; name: string }) {
         <For each={PREVIEW_WORDS}>
           {(word) => (
             <div class="catalog-preview-item">
-              <EffectPreview text={word} sizeEffectId={props.id} options={{ baseSize: baseSize() }} />
+              <EffectPreview text={word} sizeEffectId={props.id} options={{ baseSize: baseSize(), amplitude: sizeAmplitude() }} />
             </div>
           )}
         </For>
@@ -292,7 +292,7 @@ export function EffectsCatalog(props: Props) {
                                   customProfile={effect.profile}
                                   customColors={effect.customColors}
                                   composedData={effect.composedData}
-                                  options={{ baseSize: baseSize() }}
+                                  options={{ baseSize: baseSize(), amplitude: sizeAmplitude() }}
                                 />
                               </div>
                             )}

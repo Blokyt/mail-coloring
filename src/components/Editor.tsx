@@ -1,5 +1,5 @@
 import { onMount, onCleanup, createSignal } from 'solid-js'
-import { pushUndo, undo, pushRedo, redo, activeColorEffect, activeSizeEffect, baseSize } from '../stores/editor'
+import { pushUndo, undo, pushRedo, redo, activeColorEffect, activeSizeEffect, baseSize, sizeAmplitude } from '../stores/editor'
 import { COLOR_EFFECTS, SIZE_EFFECTS } from '../engine/effects'
 import { getBuffer } from './Header'
 
@@ -198,7 +198,7 @@ export function applyColorToSelection(colors: string[]) {
  * Applique un effet de taille sur la selection en preservant le formatage existant.
  * Chaque caractere non-espace recoit sa taille selon getOffset().
  */
-export function applySizeToSelection(getOffset: (charIdx: number) => number, baseSize: number) {
+export function applySizeToSelection(getOffset: (charIdx: number, total: number) => number, baseSize: number) {
   if (!editorEl) return
   restoreSelection()
   const sel = window.getSelection()
@@ -213,6 +213,10 @@ export function applySizeToSelection(getOffset: (charIdx: number) => number, bas
   const textNodes: Text[] = []
   while (walker.nextNode()) textNodes.push(walker.currentNode as Text)
 
+  // Compter le total de non-space chars pour calculer t = charIdx / (total - 1)
+  let total = 0
+  for (const tn of textNodes) for (const ch of (tn.textContent || '')) if (ch !== ' ' && ch !== '\n' && ch !== '\t') total++
+
   let charIdx = 0
   for (const textNode of textNodes) {
     const text = textNode.textContent || ''
@@ -222,7 +226,7 @@ export function applySizeToSelection(getOffset: (charIdx: number) => number, bas
         charFrag.appendChild(document.createTextNode(char))
       } else {
         const span = document.createElement('span')
-        const offset = getOffset(charIdx)
+        const offset = getOffset(charIdx, total)
         span.style.fontSize = `${Math.max(8, Math.round(baseSize + offset))}px`
         span.textContent = char
         charFrag.appendChild(span)
@@ -538,7 +542,7 @@ export function Editor() {
         const sizeId = activeSizeEffect()
         const colorEffect = colorId ? COLOR_EFFECTS[colorId] : null
         const sizeEffect = sizeId ? SIZE_EFFECTS[sizeId] : null
-        const opts = { baseSize: baseSize() }
+        const amp = sizeAmplitude()
 
         // Extraire le contenu selectionne
         const extracted = range.extractContents()
@@ -563,8 +567,8 @@ export function Editor() {
 
           let fontSize = buf.fontSize
           if (sizeEffect) {
-            const offset = sizeEffect.getOffset(charIdx)
-            fontSize = Math.max(8, Math.round(opts.baseSize + offset))
+            const t = nonSpaceCount <= 1 ? 0 : charIdx / (nonSpaceCount - 1)
+            fontSize = Math.max(8, Math.round(baseSize() + amp * sizeEffect.getShape(t)))
           }
 
           const styleParts = [

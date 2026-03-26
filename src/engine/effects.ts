@@ -7,6 +7,7 @@
 
 export interface EffectOptions {
   baseSize: number    // px
+  amplitude: number   // px — max extra size for the biggest letter
 }
 
 export interface CharStyle {
@@ -30,8 +31,8 @@ export interface ColorEffect {
 export interface SizeEffect {
   name: string
   icon: string
-  /** Retourne l'offset en px pour le caractere a l'index donne (deterministe, independant de la longueur du texte) */
-  getOffset: (index: number) => number
+  /** Retourne la forme normalisee [0,1] pour t dans [0,1]. fontSize = baseSize + amplitude * getShape(t) */
+  getShape: (t: number) => number
 }
 
 // ============================================
@@ -128,46 +129,56 @@ export function getEffectiveColorEffects(adminOverrides?: Record<string, { name:
 // EFFETS TAILLE PRÉDÉFINIS
 // ============================================
 
+/* Helpers pour normaliser les gaussiennes */
+function gaussShape(t: number, center: number, sigma2: number): number {
+  const raw = Math.exp(-((t - center) ** 2) / sigma2)
+  const edge = Math.min(Math.exp(-(center ** 2) / sigma2), Math.exp(-((1 - center) ** 2) / sigma2))
+  return Math.max(0, (raw - edge) / (1 - edge))
+}
+
 export const SIZE_EFFECTS: Record<string, SizeEffect> = {
   montee: {
     name: 'Montee lineaire',
     icon: '',
-    getOffset: (i) => i * 4,
+    getShape: (t) => t,
   },
   montee_exp: {
     name: 'Montee exponentielle',
     icon: '',
-    getOffset: (i) => 3 * (Math.exp(i * 0.25) - 1),
+    getShape: (t) => (Math.exp(2.25 * t) - 1) / (Math.exp(2.25) - 1),
   },
   descente: {
     name: 'Descente lineaire',
     icon: '',
-    getOffset: (i) => Math.max(0, 40 - i * 4),
+    getShape: (t) => 1 - t,
   },
   descente_exp: {
     name: 'Descente exponentielle',
     icon: '',
-    getOffset: (i) => 40 * Math.exp(-i * 0.3),
+    getShape: (t) => {
+      const k = 2.7, minV = Math.exp(-k)
+      return (Math.exp(-k * t) - minV) / (1 - minV)
+    },
   },
   arche: {
     name: 'Arche',
     icon: '',
-    getOffset: (i) => 30 * Math.exp(-((i - 5) ** 2) / 8),
+    getShape: (t) => gaussShape(t, 0.5, 0.08),
   },
   impulsion: {
     name: 'Impulsion',
     icon: '',
-    getOffset: (i) => 25 * Math.exp(-((i - 1) ** 2) / 2),
+    getShape: (t) => gaussShape(t, 0.1, 0.02),
   },
   vague: {
     name: 'Vague',
     icon: '',
-    getOffset: (i) => (Math.sin(i * 0.8) + 1) * 15,
+    getShape: (t) => (Math.sin(7.2 * t) + 1) / 2,
   },
   rebond: {
     name: 'Rebond',
     icon: '',
-    getOffset: (i) => Math.abs(Math.sin(i * 0.6)) * 25,
+    getShape: (t) => Math.abs(Math.sin(5.4 * t)),
   },
 }
 
@@ -209,8 +220,9 @@ export function applyEffects(
     }
 
     if (sizeEffect) {
-      const offset = sizeEffect.getOffset(charIdx)
-      const size = Math.max(8, Math.round(options.baseSize + offset))
+      const t = nonSpaceCount <= 1 ? 0 : charIdx / (nonSpaceCount - 1)
+      const shape = sizeEffect.getShape(t)
+      const size = Math.max(8, Math.round(options.baseSize + options.amplitude * shape))
       styles.push(`font-size:${size}px`)
     }
 
@@ -236,7 +248,6 @@ export function applySizeProfile(
   profile: number[],
   options: EffectOptions,
   colorEffectId?: string | null,
-  amplitude?: number,
 ): string {
   const chars = [...text]
   const colorEffect = colorEffectId ? COLOR_EFFECTS[colorEffectId] : null
@@ -244,10 +255,6 @@ export function applySizeProfile(
   const total = nonSpaceChars.length
 
   if (total === 0 || profile.length === 0) return text
-
-  // Detecter si le profil est normalise [0,1] (ShapeCanvas) ou brut en px (MathFunction)
-  const isNormalized = profile.every(v => v >= -0.01 && v <= 1.01)
-  const maxAdd = isNormalized ? (amplitude ?? 40) : 1 // brut: offset direct, pas de multiplicateur
 
   let charIdx = 0
   const parts: string[] = []
@@ -260,7 +267,7 @@ export function applySizeProfile(
 
     const value = interpolateProfile(profile, charIdx, total)
 
-    const size = Math.max(8, Math.round(options.baseSize + value * maxAdd))
+    const size = Math.max(8, Math.round(options.baseSize + options.amplitude * value))
     const styles: string[] = [`font-size:${size}px`]
 
     if (colorEffect) {
@@ -286,18 +293,20 @@ export function applyComposedEffect(
   resolvedColors?: string[] | null,
 ): string {
   const chars = [...text]
-  const getOffset = data.sizeEffectRef ? SIZE_EFFECTS[data.sizeEffectRef]?.getOffset : null
+  const sizeEffect = data.sizeEffectRef ? SIZE_EFFECTS[data.sizeEffectRef] : null
   const colors = resolvedColors
     ?? (data.colorEffectRef ? COLOR_EFFECTS[data.colorEffectRef]?.colors : null)
     ?? (data.flatColor ? [data.flatColor] : null)
 
+  const nonSpaceCount = chars.filter(c => c !== ' ').length
   let charIdx = 0
   const inner = chars.map(char => {
     if (char === ' ') return ' '
     const styles: string[] = []
     if (colors) styles.push(`color:${colors[charIdx % colors.length]}`)
-    if (getOffset) {
-      const size = Math.max(8, Math.round(options.baseSize + getOffset(charIdx)))
+    if (sizeEffect) {
+      const t = nonSpaceCount <= 1 ? 0 : charIdx / (nonSpaceCount - 1)
+      const size = Math.max(8, Math.round(options.baseSize + options.amplitude * sizeEffect.getShape(t)))
       styles.push(`font-size:${size}px`)
     }
     if (data.font) styles.push(`font-family:${data.font}`)

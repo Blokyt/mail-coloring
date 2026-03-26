@@ -2,7 +2,7 @@ import { createSignal, For, Show, createMemo } from 'solid-js'
 import { COLOR_EFFECTS, SIZE_EFFECTS, type ComposedEffectData, type EmojiPosition } from '../engine/effects'
 import { sparklineFromFn } from '../engine/sparkline'
 import { getPersoEffects } from '../stores/workshops'
-import { baseSize } from '../stores/editor'
+import { baseSize, sizeAmplitude } from '../stores/editor'
 import { FONTS } from '../data/fonts'
 import { PREVIEW_SHORT } from '../data/preview'
 import { EffectPreview } from './EffectPreview'
@@ -52,7 +52,7 @@ export function ComposedCreator(props: Props) {
       <div class="composed-tag-grid">
         <For each={Object.entries(SIZE_EFFECTS)}>
           {([id, effect]) => {
-            const path = () => sparklineFromFn((i) => effect.getOffset(i))
+            const path = () => sparklineFromFn((t) => effect.getShape(t))
             const accent = () => SIZE_ACCENT_COLORS[id] ?? 'var(--lavender)'
             return (
               <button
@@ -184,7 +184,7 @@ export function ComposedCreator(props: Props) {
       <Show when={hasAnything()}>
         <div class="composed-section-label">Apercu</div>
         <div class="math-text-preview">
-          <EffectPreview text={PREVIEW_SHORT} composedData={composedData()} options={{ baseSize: baseSize() }} />
+          <EffectPreview text={PREVIEW_SHORT} composedData={composedData()} options={{ baseSize: baseSize(), amplitude: sizeAmplitude() }} />
         </div>
 
         <button class="btn btn-lavender" onClick={() => props.onSave(composedData())}>

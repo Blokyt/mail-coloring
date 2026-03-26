@@ -6,6 +6,7 @@ const [activeSizeEffect, setActiveSizeEffect] = createSignal<string | null>(null
 
 // Contrôles
 const [baseSize, setBaseSize] = createSignal(18)
+const [sizeAmplitude, setSizeAmplitude] = createSignal(20)
 const [activeFont, setActiveFont] = createSignal('Arial, sans-serif')
 
 // Profil de taille personnalisé (tracé souris ou fonction math)
@@ -44,6 +45,7 @@ export {
   activeColorEffect, setActiveColorEffect,
   activeSizeEffect, setActiveSizeEffect,
   baseSize, setBaseSize,
+  sizeAmplitude, setSizeAmplitude,
   activeFont, setActiveFont,
   customSizeProfile, setCustomSizeProfile,
 }

@@ -1,6 +1,6 @@
 import { For, Show, createSignal } from 'solid-js'
 import { VENETIAN_PALETTE } from '../data/colors'
-import { baseSize, setBaseSize } from '../stores/editor'
+import { baseSize, setBaseSize, sizeAmplitude, setSizeAmplitude } from '../stores/editor'
 import { sizeFavorites, addSizeFavorite, removeSizeFavorite } from '../stores/workshops'
 import { getEmojiFavoritesList } from '../stores/emojis'
 import { applyInlineStyle, execFormatCommand, applyLink, getSelectedText, replaceSelectionWithHtml } from './Editor'
@@ -115,6 +115,11 @@ export function ToolbarPanel() {
             <input type="range" min="12" max="48" value={baseSize()} onInput={(e) => setBaseSize(parseInt(e.currentTarget.value))} onChange={(e) => { applyInlineStyle('fontSize', `${e.currentTarget.value}px`); updateBuffer({ fontSize: parseInt(e.currentTarget.value) }) }} />
             <span class="slider-value">{baseSize()}</span>
             <button class="fav-add" onClick={() => addSizeFavorite(baseSize())} title="Ajouter la taille aux favoris">+</button>
+          </div>
+          <div class="slider-group">
+            <span class="slider-label">Amplitude</span>
+            <input type="range" min="0" max="60" step="0.1" value={sizeAmplitude()} onInput={(e) => setSizeAmplitude(parseFloat(e.currentTarget.value))} />
+            <span class="slider-value">{sizeAmplitude().toFixed(0)}</span>
           </div>
           <Show when={sizeFavorites().length > 0}>
             <div class="fav-pills">

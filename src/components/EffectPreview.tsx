@@ -8,11 +8,10 @@ interface Props {
   customProfile?: number[] | null
   customColors?: string[] | null
   composedData?: ComposedEffectData | null
-  amplitude?: number
   options?: Partial<EffectOptions>
 }
 
-const DEFAULT_OPTS: EffectOptions = { baseSize: 18 }
+const DEFAULT_OPTS: EffectOptions = { baseSize: 18, amplitude: 20 }
 
 /** Applique une palette cycling sur du texte */
 function applyCustomColors(text: string, colors: string[]): string {
@@ -40,7 +39,7 @@ export function EffectPreview(props: Props) {
     // Custom size profile
     const profile = props.sizeProfile ?? props.customProfile
     if (profile && profile.length > 0) {
-      return applySizeProfile(props.text, profile, opts(), props.colorEffectId ?? null, props.amplitude)
+      return applySizeProfile(props.text, profile, opts(), props.colorEffectId ?? null)
     }
     // Predefined effects
     return applyEffects(
