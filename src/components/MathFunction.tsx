@@ -40,37 +40,43 @@ export function MathFunction(props: Props) {
   let curveRef!: HTMLCanvasElement
 
   const [expr, setExpr] = createSignal('sin(x)')
-  const [b, setB] = createSignal(1)
-  const [c, setC] = createSignal(0)
+  const [b, setB] = createSignal(6.3)  // etendue visible (6.3 ≈ 2π pour sin)
+  const [c, setC] = createSignal(0)    // debut du domaine
 
-  /** Profil normalise [0,1] : f(b*(t-c)) normalise sur 50 samples, t ∈ [0, n-1] */
+  /**
+   * Domaine : x parcourt [c, c + b]. Chaque lettre i (0..n-1) correspond
+   * a x = c + (i/(n-1)) * b. b = etendue visible, c = decalage.
+   * Pour sin: b≈6.3 = une periode. Pour x^2: b=1 doux, b=3 pentu.
+   * On normalise en [0,1] (min→0, max→1) pour le stockage.
+   * L'amplitude globale controle ensuite la hauteur en px.
+   */
+  const evalRaw = (letterIdx: number, n: number): number => {
+    const t = n <= 1 ? 0 : letterIdx / (n - 1)
+    const x = c() + t * b()
+    return evaluateMathExprSafe(expr(), x)
+  }
+
+  /** Profil [0,1] sur 50 samples */
   const getProfile = (): number[] => {
     const n = [...PREVIEW_TEXT].filter(ch => ch !== ' ').length
     const samples = 50
-    const raw: number[] = []
-    for (let i = 0; i < samples; i++) {
-      const idx = (i / (samples - 1)) * (n - 1) // index de lettre 0..n-1
-      raw.push(evaluateMathExprSafe(expr(), b() * (idx - c())))
-    }
-    const min = Math.min(...raw)
-    const max = Math.max(...raw)
-    const range = max - min || 1
+    const raw = Array.from({ length: samples }, (_, s) => {
+      const i = (s / (samples - 1)) * (n - 1)
+      return evalRaw(i, n)
+    })
+    const min = Math.min(...raw), max = Math.max(...raw), range = max - min || 1
     return raw.map(v => (v - min) / range)
   }
 
-  /** Preview WYSIWYG : baseSize + amplitude * shape(t) */
+  /** Preview WYSIWYG : baseSize + amplitude * shape */
   const previewHtml = (): string => {
-    const prof = getProfile()
     const chars = [...PREVIEW_TEXT].filter(ch => ch !== ' ')
     const n = chars.length
     const amp = sizeAmplitude()
+    const rawValues = chars.map((_, i) => evalRaw(i, n))
+    const min = Math.min(...rawValues), max = Math.max(...rawValues), range = max - min || 1
     return chars.map((ch, i) => {
-      const t = n <= 1 ? 0 : i / (n - 1)
-      const pIdx = t * (prof.length - 1)
-      const lo = Math.floor(pIdx)
-      const hi = Math.min(lo + 1, prof.length - 1)
-      const frac = pIdx - lo
-      const shape = prof[lo] * (1 - frac) + prof[hi] * frac
+      const shape = (rawValues[i] - min) / range
       const size = Math.max(8, Math.round(baseSize() + amp * shape))
       return `<span style="font-size:${size}px">${ch}</span>`
     }).join('')
@@ -92,11 +98,11 @@ export function MathFunction(props: Props) {
     ctx.strokeStyle = CANVAS_GRID; ctx.lineWidth = 1
     for (let y = 0; y < h; y += 25) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke() }
 
-    // Valeurs sur 0..n-1
+    // Valeurs sur le domaine [c, c+b]
     const values: number[] = []
     for (let i = 0; i < samples; i++) {
       const idx = (i / (samples - 1)) * (n - 1)
-      values.push(evaluateMathExprSafe(expr(), b() * (idx - c())))
+      values.push(evalRaw(idx, n))
     }
     const minV = Math.min(...values, 0), maxV = Math.max(...values, 0)
     const range = maxV - minV || 1
@@ -149,13 +155,13 @@ export function MathFunction(props: Props) {
     <div class="math-container">
       <div class="math-formula">
         <span class="math-formula-f">f</span>
-        <span class="math-formula-paren">(</span>
-        <span class="math-formula-b">b</span>
-        <span class="math-formula-dot"> · (x − </span>
+        <span class="math-formula-paren">(x)</span>
+        <span class="math-formula-dot">&ensp;x ∈ [</span>
         <span class="math-formula-c">c</span>
-        <span class="math-formula-paren">)</span>
-        <span class="math-formula-paren">)</span>
-        <span class="math-formula-dot" style={{ "margin-left": "12px", color: "var(--muted)" }}>amplitude = {sizeAmplitude()}px (toolbar)</span>
+        <span class="math-formula-dot">, c+</span>
+        <span class="math-formula-b">b</span>
+        <span class="math-formula-dot">]&ensp;|&ensp;amplitude </span>
+        <span class="math-formula-a">{sizeAmplitude().toFixed(0)}px</span>
       </div>
 
       <div class="math-text-preview" innerHTML={previewHtml()} />
@@ -176,12 +182,12 @@ export function MathFunction(props: Props) {
 
       <div class="math-params">
         <div class="math-param">
-          <span class="math-param-name" title="Frequence / etirement">b</span>
-          <input type="range" min="0" max="5" step="0.05" value={b()} onInput={(e) => setB(parseFloat(e.currentTarget.value))} />
-          <span class="math-param-val">{b().toFixed(2)}</span>
+          <span class="math-param-name" title="Etendue visible du domaine">b</span>
+          <input type="range" min="0.5" max="20" step="0.1" value={b()} onInput={(e) => setB(parseFloat(e.currentTarget.value))} />
+          <span class="math-param-val">{b().toFixed(1)}</span>
         </div>
         <div class="math-param">
-          <span class="math-param-name" title="Decalage horizontal">c</span>
+          <span class="math-param-name" title="Debut du domaine">c</span>
           <input type="range" min="-10" max="10" step="0.1" value={c()} onInput={(e) => setC(parseFloat(e.currentTarget.value))} />
           <span class="math-param-val">{c().toFixed(1)}</span>
         </div>
