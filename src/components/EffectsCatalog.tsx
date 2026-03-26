@@ -167,7 +167,7 @@ export function EffectsCatalog(props: Props) {
         type: 'custom-size',
         label: name,
         profile: pendingProfile()!,
-        rawProfile: !!pendingMathExpr(),  // MathFunction = offsets bruts
+        rawProfile: true,  // les deux sources produisent des offsets normalises
         mathExpr: pendingMathExpr(),
         mathParams: pendingMathParams(),
       })

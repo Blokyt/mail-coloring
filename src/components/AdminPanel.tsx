@@ -15,8 +15,10 @@ import { SIZE_ACCENTS } from '../data/accents'
 import { DEFAULT_EMOJIS } from '../data/emojis'
 import { VENETIAN_PALETTE } from '../data/colors'
 import { showToast } from './Toast'
+import { TUTORIAL_STEPS, VALID_STEP_IDS, startTutorial, resetTutorial } from '../stores/tutorial'
+import { setEditorOpen } from './TutorialEditor'
 
-type Tab = 'css' | 'colors' | 'emojis'
+type Tab = 'css' | 'colors' | 'emojis' | 'tutorial'
 
 /* ══════════════════════════════════════════
    CSS Tweaker — types & data (ex CssTweaker.tsx)
@@ -232,6 +234,7 @@ export function AdminPanel() {
           <button class={`catalog-tab ${tab() === 'colors' ? 'active' : ''}`} onClick={() => setTab('colors')}>Effets</button>
           <button class={`catalog-tab ${tab() === 'emojis' ? 'active' : ''}`} onClick={() => setTab('emojis')}>Emojis</button>
           <button class={`catalog-tab ${tab() === 'css' ? 'active' : ''}`} onClick={() => setTab('css')}>Interface CSS</button>
+          <button class={`catalog-tab ${tab() === 'tutorial' ? 'active' : ''}`} onClick={() => setTab('tutorial')}>Tutoriel</button>
         </div>
 
         <div class="admin-body">
@@ -356,6 +359,31 @@ export function AdminPanel() {
                   <input class="naming-input" value={newEmojiLabel()} onInput={(e) => setNewEmojiLabel(e.currentTarget.value)} placeholder="Label" style={{ flex: '1' }} />
                   <button class="btn btn-lavender tuto-btn" onClick={addAdminEmoji} disabled={!newEmoji().trim()}>Ajouter</button>
                 </div>
+              </div>
+            </div>
+          </Show>
+
+          {/* ── Tutoriel ── */}
+          <Show when={tab() === 'tutorial'}>
+            <div class="admin-section" style={{ display: 'flex', "flex-direction": 'column', gap: '16px' }}>
+              <div class="admin-section-label">Gestion du tutoriel</div>
+              <p style={{ "font-family": "'Fredoka', sans-serif", "font-size": 'var(--font-md)', color: 'var(--soft-black)', "line-height": '1.5' }}>
+                {TUTORIAL_STEPS.length} steps · {Object.keys(adminData().tutorialPositions).length} positions · {Object.keys(adminData().tutorialTexts).length} textes · {Object.keys(adminData().tutorialActions).length} actions
+                {(() => {
+                  const orphans = Object.keys(adminData().tutorialPositions).filter(id => !VALID_STEP_IDS.has(id)).length
+                  return orphans > 0 ? ` · ${orphans} orpheline${orphans > 1 ? 's' : ''}` : ''
+                })()}
+              </p>
+              <div style={{ display: 'flex', gap: '8px', "flex-wrap": 'wrap' }}>
+                <button class="btn btn-lavender" style={{ "font-size": 'var(--font-sm)', padding: '6px 14px' }} onClick={() => { setOpen(false); setEditorOpen(true) }}>
+                  Ouvrir l'editeur tutoriel
+                </button>
+                <button class="btn" style={{ "font-size": 'var(--font-sm)', padding: '6px 14px' }} onClick={() => { setOpen(false); startTutorial() }}>
+                  Lancer tutoriel (user)
+                </button>
+                <button class="btn" style={{ "font-size": 'var(--font-sm)', padding: '6px 14px' }} onClick={() => { resetTutorial(); showToast('Tutoriel reinitialise — rechargez pour voir le WelcomeModal') }}>
+                  Reset completion
+                </button>
               </div>
             </div>
           </Show>

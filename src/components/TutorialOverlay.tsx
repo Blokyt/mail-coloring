@@ -1,32 +1,26 @@
-import { Show, createEffect, createSignal, onCleanup } from 'solid-js'
+import { Show, createEffect, createSignal, createMemo, onCleanup } from 'solid-js'
 import { Portal } from 'solid-js/web'
 import {
   tutorialActive, currentStep, TUTORIAL_STEPS,
   nextStep, prevStep, skipTutorial,
+  computeAnchorPosition,
+  BUBBLE_WIDTH, BUBBLE_HEIGHT, SPOT_PADDING, CENTER_BIAS, VIEWPORT_MARGIN, BUBBLE_GAP,
 } from '../stores/tutorial'
-import { isAdmin } from '../stores/admin'
-import { adminData, adminSetTutorialPositions, adminSetTutorialText, saveAdminData } from '../stores/admin-data'
+import type { TutorialAction } from '../stores/tutorial'
+import { adminData } from '../stores/admin-data'
+import type { TutorialPosition, TutorialActionOverride } from '../stores/admin-data'
 import '../styles/tutorial.css'
-
-/* ── Positions sauvegardees (admin-data.json) ── */
-
-type SavedPos = { bubbleTop: number; bubbleLeft: number; spotTop: number; spotLeft: number; spotW: number; spotH: number }
-
-function loadPositions(): Record<string, SavedPos> {
-  return (adminData().tutorialPositions ?? {}) as Record<string, SavedPos>
-}
 
 export function TutorialOverlay() {
   const [spotRect, setSpotRect] = createSignal({ top: 0, left: 0, width: 0, height: 0 })
   const [bubblePos, setBubblePos] = createSignal({ top: 0, left: 0 })
-  const [dragging, setDragging] = createSignal<'bubble' | 'spot' | null>(null)
-  const [dragOffset, setDragOffset] = createSignal({ x: 0, y: 0 })
-  const [dirty, setDirty] = createSignal(false)
+  const [actionCompleted, setActionCompleted] = createSignal(false)
 
   const step = () => TUTORIAL_STEPS[currentStep()]
   const total = TUTORIAL_STEPS.length
   const progress = () => `${currentStep() + 1} / ${total}`
   const module = () => step()?.module ?? ''
+
   // Textes avec overrides admin
   const stepTitle = () => {
     const s = step(); if (!s) return ''
@@ -36,34 +30,55 @@ export function TutorialOverlay() {
     const s = step(); if (!s) return ''
     return adminData().tutorialTexts?.[s.id]?.description ?? s.description
   }
-  const [editingText, setEditingText] = createSignal(false)
-  const [editTitle, setEditTitle] = createSignal('')
-  const [editDesc, setEditDesc] = createSignal('')
+
+  // Action effective (code + override admin)
+  const effectiveAction = createMemo((): (TutorialAction & { enabled: boolean }) | null => {
+    const s = step()
+    if (!s) return null
+    const codeAction = s.action
+    const override: TutorialActionOverride | undefined = adminData().tutorialActions?.[s.id]
+
+    // Si pas d'action dans le code et pas d'override, pas d'action
+    if (!codeAction && !override) return null
+    // Si override dit explicitement 'none' ou enabled=false
+    if (override?.type === 'none' || override?.enabled === false) return null
+
+    const type = override?.type ?? codeAction?.type
+    if (!type || type === 'none') return null
+
+    return {
+      type,
+      targetSelector: override?.targetSelector ?? codeAction?.targetSelector ?? s.targetSelector,
+      hint: override?.hint ?? codeAction?.hint,
+      enabled: override?.enabled !== false,
+    }
+  })
+
+  // La step necessite-t-elle une action ?
+  const needsAction = () => !!effectiveAction()
+  const canAdvance = () => !needsAction() || actionCompleted()
+
+  /* ── Positionnement ── */
 
   function measure() {
     const s = step()
     if (!s) return
 
-    // Verifier si on a une position sauvegardee
-    const saved = loadPositions()[s.id]
-    if (saved) {
-      setSpotRect({ top: saved.spotTop, left: saved.spotLeft, width: saved.spotW, height: saved.spotH })
-      setBubblePos({ top: saved.bubbleTop, left: saved.bubbleLeft })
-      setDirty(false)
-      return
-    }
+    const saved: TutorialPosition | undefined = adminData().tutorialPositions?.[s.id]
 
-    const el = document.querySelector(s.targetSelector)
+    // Spotlight : toujours calcule depuis le DOM
+    const spotSelector = saved?.spotSelector ?? s.targetSelector
+    const el = document.querySelector(spotSelector)
+    const pad = saved?.spotPadding ?? SPOT_PADDING
+
     if (!el) {
       const vw = window.innerWidth, vh = window.innerHeight
       setSpotRect({ top: 0, left: 0, width: vw, height: vh })
-      setBubblePos({ top: vh / 2 - 100, left: vw / 2 - 170 })
-      setDirty(false)
+      setBubblePos({ top: vh / 2 - BUBBLE_HEIGHT / 2, left: vw / 2 - BUBBLE_WIDTH / 2 })
       return
     }
 
     const rect = el.getBoundingClientRect()
-    const pad = 8
     setSpotRect({
       top: rect.top - pad,
       left: rect.left - pad,
@@ -71,59 +86,39 @@ export function TutorialOverlay() {
       height: rect.height + pad * 2,
     })
 
-    // Positionner la bulle — naturellement proche de la cible, biais vers le centre
-    const pos = s.position
-    const gap = 16
-    const bw = 340
-    const bh = 200
-    const margin = 16
-    const vw = window.innerWidth
-    const vh = window.innerHeight
-    const cx = vw / 2, cy = vh / 2 // centre viewport
+    // Bulle : anchor-based
+    const anchor = saved?.bubbleAnchor ?? s.position
+    const base = computeAnchorPosition(anchor, rect, BUBBLE_WIDTH, BUBBLE_HEIGHT, BUBBLE_GAP)
+    let t = base.top + (saved?.bubbleOffsetX ?? 0)
+    let l = base.left + (saved?.bubbleOffsetY ?? 0)
 
-    let t = 0, l = 0
-
-    if (pos === 'bottom') {
-      t = rect.bottom + gap
-      l = rect.left + rect.width / 2 - bw / 2
-    } else if (pos === 'top') {
-      t = rect.top - gap - bh
-      l = rect.left + rect.width / 2 - bw / 2
-    } else if (pos === 'right') {
-      t = rect.top + rect.height / 2 - bh / 2
-      l = rect.right + gap
-    } else if (pos === 'left') {
-      t = rect.top + rect.height / 2 - bh / 2
-      l = rect.left - gap - bw
-    } else if (pos === 'bottom-right') {
-      // Grands elements : bulle en bas a droite mais pas collee au bord
-      t = vh - bh - 60
-      l = vw - bw - 60
-    }
-
-    // Biais vers le centre (30%) pour un rendu plus naturel
-    t = t + (cy - t) * 0.15
-    l = l + (cx - l) * 0.15
+    // Biais vers le centre
+    const vw = window.innerWidth, vh = window.innerHeight
+    const cx = vw / 2, cy = vh / 2
+    t = t + (cy - t) * CENTER_BIAS
+    l = l + (cx - l) * CENTER_BIAS
 
     // Clamper dans le viewport
-    t = Math.max(margin, Math.min(t, vh - bh - margin))
-    l = Math.max(margin, Math.min(l, vw - bw - margin))
+    t = Math.max(VIEWPORT_MARGIN, Math.min(t, vh - BUBBLE_HEIGHT - VIEWPORT_MARGIN))
+    l = Math.max(VIEWPORT_MARGIN, Math.min(l, vw - BUBBLE_WIDTH - VIEWPORT_MARGIN))
 
     setBubblePos({ top: Math.round(t), left: Math.round(l) })
-    setDirty(false)
 
     if (rect.top < 0 || rect.bottom > vh) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }
   }
 
+  // Re-mesurer quand step change
   createEffect(() => {
     if (!tutorialActive()) return
     void currentStep()
+    setActionCompleted(false)
     const t = setTimeout(measure, 100)
     onCleanup(() => clearTimeout(t))
   })
 
+  // Re-mesurer au resize
   createEffect(() => {
     if (!tutorialActive()) return
     const handler = () => measure()
@@ -131,68 +126,51 @@ export function TutorialOverlay() {
     onCleanup(() => window.removeEventListener('resize', handler))
   })
 
-  // ── Drag handlers ──
-  function onMouseDown(target: 'bubble' | 'spot', e: MouseEvent) {
-    if (!isAdmin()) return
-    e.preventDefault()
-    e.stopPropagation()
-    setDragging(target)
-    if (target === 'bubble') {
-      setDragOffset({ x: e.clientX - bubblePos().left, y: e.clientY - bubblePos().top })
-    } else {
-      setDragOffset({ x: e.clientX - spotRect().left, y: e.clientY - spotRect().top })
-    }
-  }
+  /* ── Validation d'actions interactives ── */
 
   createEffect(() => {
-    if (!dragging()) return
+    if (!tutorialActive()) return
+    const action = effectiveAction()
+    if (!action) { setActionCompleted(true); return }
 
-    const onMove = (e: MouseEvent) => {
-      const d = dragging()
-      if (!d) return
-      setDirty(true)
-      if (d === 'bubble') {
-        setBubblePos({ top: e.clientY - dragOffset().y, left: e.clientX - dragOffset().x })
-      } else {
-        const sr = spotRect()
-        setSpotRect({ ...sr, top: e.clientY - dragOffset().y, left: e.clientX - dragOffset().x })
+    const selector = action.targetSelector
+    if (!selector) { setActionCompleted(true); return }
+
+    if (action.type === 'select-text') {
+      const handler = () => {
+        const sel = window.getSelection()
+        if (!sel || sel.toString().length === 0) return
+        // Verifier que la selection est dans le target
+        const target = document.querySelector(selector)
+        if (target && sel.anchorNode && target.contains(sel.anchorNode)) {
+          setActionCompleted(true)
+        }
       }
+      document.addEventListener('selectionchange', handler)
+      onCleanup(() => document.removeEventListener('selectionchange', handler))
+    } else if (action.type === 'click-element') {
+      const handler = (e: Event) => {
+        const target = document.querySelector(selector)
+        if (target && target.contains(e.target as Node)) {
+          setActionCompleted(true)
+        }
+      }
+      // Ecouter sur document en capture pour ne pas bloquer le click
+      document.addEventListener('click', handler, true)
+      onCleanup(() => document.removeEventListener('click', handler, true))
+    } else if (action.type === 'dblclick-element') {
+      const handler = (e: Event) => {
+        const target = document.querySelector(selector)
+        if (target && target.contains(e.target as Node)) {
+          setActionCompleted(true)
+        }
+      }
+      document.addEventListener('dblclick', handler, true)
+      onCleanup(() => document.removeEventListener('dblclick', handler, true))
     }
-
-    const onUp = () => setDragging(null)
-
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
-    onCleanup(() => {
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
-    })
   })
 
-  async function saveCurrentPos() {
-    const s = step()
-    if (!s) return
-    const positions = { ...loadPositions() }
-    const sr = spotRect()
-    const bp = bubblePos()
-    positions[s.id] = {
-      bubbleTop: bp.top, bubbleLeft: bp.left,
-      spotTop: sr.top, spotLeft: sr.left, spotW: sr.width, spotH: sr.height,
-    }
-    adminSetTutorialPositions(positions)
-    await saveAdminData()
-    setDirty(false)
-  }
-
-  async function resetCurrentPos() {
-    const s = step()
-    if (!s) return
-    const positions = { ...loadPositions() }
-    delete positions[s.id]
-    adminSetTutorialPositions(positions)
-    await saveAdminData()
-    measure()
-  }
+  /* ── Rendu ── */
 
   const r = () => spotRect()
   const clipPath = () => {
@@ -212,41 +190,24 @@ export function TutorialOverlay() {
       <Portal>
         <div class="tuto-overlay" style={{ "clip-path": clipPath() }} />
         <div
-          class={`tuto-spotlight ${isAdmin() ? 'tuto-draggable' : ''}`}
+          class="tuto-spotlight"
           style={{
             top: `${r().top}px`,
             left: `${r().left}px`,
             width: `${r().width}px`,
             height: `${r().height}px`,
           }}
-          onMouseDown={(e) => onMouseDown('spot', e)}
         />
         <div
-          class={`tuto-bubble ${isAdmin() ? 'tuto-draggable' : ''}`}
+          class="tuto-bubble"
           style={{ top: `${bubblePos().top}px`, left: `${bubblePos().left}px` }}
-          onMouseDown={(e) => {
-            // Ne pas drag si on clique sur un bouton
-            if ((e.target as HTMLElement).closest('button')) return
-            onMouseDown('bubble', e)
-          }}
         >
           <div class="tuto-module">{module()}</div>
-          <Show when={!editingText()}>
-            <div class="tuto-title">{stepTitle()}</div>
-            <div class="tuto-desc">{stepDesc()}</div>
-          </Show>
-          <Show when={editingText()}>
-            <input class="naming-input tuto-edit-input" value={editTitle()} onInput={(e) => setEditTitle(e.currentTarget.value)} placeholder="Titre" />
-            <textarea class="naming-input tuto-edit-textarea" value={editDesc()} onInput={(e) => setEditDesc(e.currentTarget.value)} placeholder="Description" rows={3} />
-            <div style={{ display: 'flex', gap: '6px', "margin-bottom": '8px' }}>
-              <button class="btn btn-lavender tuto-btn" onClick={async () => {
-                const s = step(); if (!s) return
-                adminSetTutorialText(s.id, { title: editTitle(), description: editDesc() })
-                await saveAdminData()
-                setEditingText(false)
-                setDirty(true)
-              }}>OK</button>
-              <button class="btn tuto-btn" onClick={() => setEditingText(false)}>Annuler</button>
+          <div class="tuto-title">{stepTitle()}</div>
+          <div class="tuto-desc">{stepDesc()}</div>
+          <Show when={needsAction() && !actionCompleted()}>
+            <div class="tuto-action-hint">
+              {effectiveAction()?.hint ?? 'Effectuez l\'action pour continuer'}
             </div>
           </Show>
           <div class="tuto-footer">
@@ -255,22 +216,16 @@ export function TutorialOverlay() {
               <Show when={currentStep() > 0}>
                 <button class="btn tuto-btn" onClick={prevStep}>&#9666; Precedent</button>
               </Show>
-              <button class="btn btn-lavender tuto-btn" onClick={nextStep}>
+              <button
+                class={`btn btn-lavender tuto-btn ${!canAdvance() ? 'tuto-btn-disabled' : ''}`}
+                onClick={() => canAdvance() && nextStep()}
+                disabled={!canAdvance()}
+              >
                 {currentStep() < total - 1 ? 'Suivant \u25B8' : 'Terminer'}
               </button>
               <button class="tuto-skip" onClick={skipTutorial}>Passer</button>
             </div>
           </div>
-          <Show when={isAdmin()}>
-            <div class="tuto-admin-bar">
-              <span class="tuto-admin-hint">Drag bulle/spot</span>
-              <button class="btn tuto-btn" onClick={() => { setEditTitle(stepTitle()); setEditDesc(stepDesc()); setEditingText(true) }}>Editer texte</button>
-              <Show when={dirty()}>
-                <button class="btn tuto-btn" onClick={saveCurrentPos}>Sauver pos</button>
-              </Show>
-              <button class="tuto-skip" onClick={resetCurrentPos}>Reset</button>
-            </div>
-          </Show>
         </div>
       </Portal>
     </Show>

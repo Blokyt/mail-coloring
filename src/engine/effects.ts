@@ -351,6 +351,18 @@ function evaluateMathExpr(expr: string, x: number): number {
   return result
 }
 
+/** Normalise un profil de taille : min→0, max→amplitude.
+ * Garantit que la plus grande lettre = baseSize + amplitude,
+ * la plus petite = baseSize. Fonctionne pour tout type de profil
+ * (MathFunction brut ou ShapeCanvas [0,1]). */
+export function normalizeProfile(values: number[], amplitude: number): number[] {
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const range = max - min
+  if (range < 1e-10) return values.map(() => 0)
+  return values.map(v => amplitude * (v - min) / range)
+}
+
 /** Interpole une valeur dans un profil normalise [0..1] */
 export function interpolateProfile(profile: number[], charIdx: number, total: number): number {
   const t = total === 1 ? 0 : charIdx / (total - 1)

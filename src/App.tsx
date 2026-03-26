@@ -1,11 +1,13 @@
+import { createEffect, onCleanup, onMount } from 'solid-js'
 import { Header } from './components/Header'
 import { loadAdminData } from './stores/admin-data'
-import { isAdmin, toggleAdmin } from './stores/admin'
+import { toggleAdmin, activateAdmin } from './stores/admin'
 import { SidePanel } from './components/SidePanel'
 import { ToolbarPanel } from './components/ToolbarPanel'
 import { Editor } from './components/Editor'
-import { Toast } from './components/Toast'
+import { Toast, showToast } from './components/Toast'
 import { TutorialOverlay } from './components/TutorialOverlay'
+import { TutorialEditor } from './components/TutorialEditor'
 import { WelcomeModal } from './components/WelcomeModal'
 import { AdminPanel } from './components/AdminPanel'
 import './styles/app.css'
@@ -14,6 +16,24 @@ import './styles/app.css'
 loadAdminData()
 
 export default function App() {
+  // Ctrl+Shift+A pour toggle admin
+  createEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'A') {
+        e.preventDefault()
+        const now = toggleAdmin()
+        showToast(now ? 'Mode admin active' : 'Mode admin desactive')
+      }
+    }
+    document.addEventListener('keydown', handler)
+    onCleanup(() => document.removeEventListener('keydown', handler))
+  })
+
+  // ?admin=1 dans l'URL active le mode admin
+  onMount(() => {
+    if (new URL(location.href).searchParams.has('admin')) activateAdmin()
+  })
+
   return (
     <>
       <div class="shape shape-1" />
@@ -33,16 +53,9 @@ export default function App() {
       </div>
       <Toast />
       <TutorialOverlay />
+      <TutorialEditor />
       <WelcomeModal />
       <AdminPanel />
-
-      {/* Slider admin fixe en bas a gauche */}
-      <div class="admin-slider-wrap" onClick={toggleAdmin}>
-        <div class={`admin-slider-track ${isAdmin() ? 'active' : ''}`}>
-          <div class="admin-slider-thumb" />
-        </div>
-        <span class="admin-slider-label">{isAdmin() ? 'Admin' : 'User'}</span>
-      </div>
     </>
   )
 }

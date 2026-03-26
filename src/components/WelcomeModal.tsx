@@ -1,6 +1,6 @@
 import { createSignal, onMount, Show } from 'solid-js'
 import { Modal } from './Modal'
-import { shouldShowWelcome, startTutorial } from '../stores/tutorial'
+import { shouldShowWelcome, startTutorial, completeTutorial } from '../stores/tutorial'
 
 export function WelcomeModal() {
   const [open, setOpen] = createSignal(false)
@@ -19,7 +19,7 @@ export function WelcomeModal() {
 
   const handleSkip = () => {
     setOpen(false)
-    localStorage.setItem('artlequin_tutorial_done', 'true')
+    completeTutorial()
   }
 
   return (

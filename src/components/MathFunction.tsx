@@ -1,5 +1,5 @@
 import { createSignal, createEffect, For } from 'solid-js'
-import { evaluateMathExprSafe } from '../engine/effects'
+import { evaluateMathExprSafe, normalizeProfile } from '../engine/effects'
 import { baseSize, sizeAmplitude } from '../stores/editor'
 import { PREVIEW_SHORT } from '../data/preview'
 
@@ -44,29 +44,29 @@ export function MathFunction(props: Props) {
   const [c, setC] = createSignal(0)    // debut du domaine
 
   /**
-   * Formule EXACTE : fontSize(i) = baseSize + a * f(b * (i - c))
-   * i = index lettre (0, 1, 2, ..., n-1). Aucune normalisation.
-   * a = sizeAmplitude() depuis la toolbar.
+   * Formule : fontSize(i) = baseSize + offset(i)
+   * offset normalisé via normalizeProfile : min→0, max→amplitude.
+   * Params utilisateur : amplitude (toolbar), b, c.
    */
-  const getOffset = (i: number): number => {
-    return sizeAmplitude() * evaluateMathExprSafe(expr(), b() * (i - c()))
-  }
 
-  /** Profil = offsets bruts a*f(b*(i-c)) pour 50 samples sur [0, n-1] */
+  /** Profil = offsets normalisés pour 50 samples sur [0, n-1] */
   const getProfile = (): number[] => {
     const n = [...PREVIEW_TEXT].filter(ch => ch !== ' ').length
     const samples = 50
-    return Array.from({ length: samples }, (_, s) => {
+    const raw = Array.from({ length: samples }, (_, s) => {
       const i = (s / (samples - 1)) * (n - 1)
-      return sizeAmplitude() * evaluateMathExprSafe(expr(), b() * (i - c()))
+      return evaluateMathExprSafe(expr(), b() * (i - c()))
     })
+    return normalizeProfile(raw, sizeAmplitude())
   }
 
-  /** Preview EXACTE : baseSize + a * f(b * (i - c)) pour chaque lettre */
+  /** Preview normalisée : la plus grande lettre = baseSize + amplitude */
   const previewHtml = (): string => {
     const chars = [...PREVIEW_TEXT].filter(ch => ch !== ' ')
+    const raw = chars.map((_, i) => evaluateMathExprSafe(expr(), b() * (i - c())))
+    const offsets = normalizeProfile(raw, sizeAmplitude())
     return chars.map((ch, i) => {
-      const size = Math.max(8, Math.round(baseSize() + getOffset(i)))
+      const size = Math.max(8, Math.round(baseSize() + offsets[i]))
       return `<span style="font-size:${size}px">${ch}</span>`
     }).join('')
   }
@@ -87,13 +87,14 @@ export function MathFunction(props: Props) {
     ctx.strokeStyle = CANVAS_GRID; ctx.lineWidth = 1
     for (let y = 0; y < h; y += 25) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke() }
 
-    // Valeurs exactes : a * f(b * (i - c)) pour i de 0 a n-1
+    // Valeurs normalisées : min→0, max→amplitude
     const amp = sizeAmplitude()
-    const values: number[] = []
+    const rawValues: number[] = []
     for (let i = 0; i < samples; i++) {
       const idx = (i / (samples - 1)) * (n - 1)
-      values.push(amp * evaluateMathExprSafe(expr(), b() * (idx - c())))
+      rawValues.push(evaluateMathExprSafe(expr(), b() * (idx - c())))
     }
+    const values = normalizeProfile(rawValues, amp)
     const minV = Math.min(...values, 0), maxV = Math.max(...values, 0)
     const range = maxV - minV || 1
 

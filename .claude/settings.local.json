@@ -32,7 +32,8 @@
       "Bash(find /c/Users/bloki/Desktop/Programmation/PERSO/mail-coloring -name *.css -o -name *.scss)",
       "Bash(grep -r \"tweaker-gear\\\\|tweaker-panel\\\\|tweaker-grid\" /c/Users/bloki/Desktop/Programmation/PERSO/mail-coloring/src --include=*.css --include=*.scss --include=*.tsx --include=*.ts)",
       "mcp__plugin_playwright_playwright__browser_snapshot",
-      "mcp__plugin_playwright_playwright__browser_run_code"
+      "mcp__plugin_playwright_playwright__browser_run_code",
+      "mcp__plugin_playwright_playwright__browser_press_key"
     ]
   }
 }

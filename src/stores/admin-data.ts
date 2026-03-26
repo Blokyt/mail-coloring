@@ -18,12 +18,30 @@ export interface TutorialTextOverride {
   description?: string
 }
 
+export type AnchorPosition = 'top' | 'bottom' | 'left' | 'right' | 'bottom-right' | 'bottom-left' | 'top-left' | 'top-right' | 'center'
+
+export interface TutorialPosition {
+  bubbleAnchor: AnchorPosition
+  bubbleOffsetX: number
+  bubbleOffsetY: number
+  spotPadding?: number
+  spotSelector?: string
+}
+
+export interface TutorialActionOverride {
+  type?: 'select-text' | 'click-element' | 'dblclick-element' | 'none'
+  targetSelector?: string
+  hint?: string
+  enabled?: boolean
+}
+
 export interface AdminData {
   colorEffects: Record<string, AdminColorEffect>
   sizeEffectNames: Record<string, string>
   emojis: AdminEmoji[]
-  tutorialPositions: Record<string, any>
+  tutorialPositions: Record<string, TutorialPosition>
   tutorialTexts: Record<string, TutorialTextOverride>
+  tutorialActions: Record<string, TutorialActionOverride>
   css: Record<string, string | number>
 }
 
@@ -33,6 +51,7 @@ const EMPTY: AdminData = {
   emojis: [],
   tutorialPositions: {},
   tutorialTexts: {},
+  tutorialActions: {},
   css: {},
 }
 
@@ -115,14 +134,50 @@ export function adminUpdateEmoji(id: string, updates: Partial<AdminEmoji>) {
 
 /* ── Mutations — Tutorial Positions ── */
 
-export function adminSetTutorialPositions(positions: Record<string, any>) {
+export function adminSetTutorialPositions(positions: Record<string, TutorialPosition>) {
   setAdminData(d => ({ ...d, tutorialPositions: positions }))
+}
+
+export function adminSetTutorialPosition(stepId: string, pos: TutorialPosition) {
+  setAdminData(d => ({ ...d, tutorialPositions: { ...d.tutorialPositions, [stepId]: pos } }))
+}
+
+export function adminRemoveTutorialPosition(stepId: string) {
+  setAdminData(d => {
+    const { [stepId]: _, ...rest } = d.tutorialPositions
+    return { ...d, tutorialPositions: rest }
+  })
 }
 
 /* ── Mutations — Tutorial Texts ── */
 
 export function adminSetTutorialText(stepId: string, text: TutorialTextOverride) {
   setAdminData(d => ({ ...d, tutorialTexts: { ...d.tutorialTexts, [stepId]: text } }))
+}
+
+export function adminResetTutorialTexts() {
+  setAdminData(d => ({ ...d, tutorialTexts: {} }))
+}
+
+/* ── Mutations — Tutorial Actions ── */
+
+export function adminSetTutorialAction(stepId: string, action: TutorialActionOverride) {
+  setAdminData(d => ({ ...d, tutorialActions: { ...d.tutorialActions, [stepId]: action } }))
+}
+
+export function adminResetTutorialActions() {
+  setAdminData(d => ({ ...d, tutorialActions: {} }))
+}
+
+/** Supprime les positions dont l'ID n'est pas dans validIds */
+export function adminCleanOrphanPositions(validIds: Set<string>) {
+  setAdminData(d => {
+    const cleaned: Record<string, TutorialPosition> = {}
+    for (const [id, pos] of Object.entries(d.tutorialPositions)) {
+      if (validIds.has(id)) cleaned[id] = pos
+    }
+    return { ...d, tutorialPositions: cleaned }
+  })
 }
 
 /* ── Mutations — CSS ── */
