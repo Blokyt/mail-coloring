@@ -236,6 +236,7 @@ export function applySizeProfile(
   profile: number[],
   options: EffectOptions,
   colorEffectId?: string | null,
+  amplitude?: number,
 ): string {
   const chars = [...text]
   const colorEffect = colorEffectId ? COLOR_EFFECTS[colorEffectId] : null
@@ -244,9 +245,12 @@ export function applySizeProfile(
 
   if (total === 0 || profile.length === 0) return text
 
+  // Detecter si le profil est normalise [0,1] (ShapeCanvas) ou brut en px (MathFunction)
+  const isNormalized = profile.every(v => v >= -0.01 && v <= 1.01)
+  const maxAdd = isNormalized ? (amplitude ?? 40) : 1 // brut: offset direct, pas de multiplicateur
+
   let charIdx = 0
   const parts: string[] = []
-  const maxAdd = 40
 
   for (const char of chars) {
     if (char === ' ') {

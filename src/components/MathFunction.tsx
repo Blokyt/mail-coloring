@@ -40,35 +40,30 @@ export function MathFunction(props: Props) {
   let curveRef!: HTMLCanvasElement
 
   const [expr, setExpr] = createSignal('sin(x)')
-  const [a, setA] = createSignal(40)   // amplitude en px
-  const [b, setB] = createSignal(6.3)  // etendue du domaine (x va de c a c+b)
-  const [c, setC] = createSignal(0)    // debut du domaine
+  const [a, setA] = createSignal(10)
+  const [b, setB] = createSignal(1)
+  const [c, setC] = createSignal(0)
 
-  /** Calcule la taille de chaque lettre — a = amplitude (maxAdd) */
-  const getLetterSizes = (): number[] => {
-    const prof = getProfile() // [0, 1] normalisé
-    const letters = [...PREVIEW_TEXT].filter(ch => ch !== ' ')
-    const n = letters.length
-    const amplitude = a() // a controle l'amplitude en px
-    return letters.map((_, i) => {
-      const t = n === 1 ? 0 : i / (n - 1)
-      const pIdx = t * (prof.length - 1)
-      const lo = Math.floor(pIdx)
-      const hi = Math.min(lo + 1, prof.length - 1)
-      const frac = pIdx - lo
-      const value = prof[lo] * (1 - frac) + prof[hi] * frac
-      return Math.max(8, Math.round(baseSize() + value * amplitude))
-    })
+  /** Offset en px pour la lettre i : a * f(b * (i - c)) */
+  const getOffset = (i: number): number => {
+    return a() * evaluateMathExprSafe(expr(), b() * (i - c()))
   }
 
-  /** Dessine la courbe f(x) sur le canvas */
+  /** Tailles de chaque lettre du preview — WYSIWYG exact */
+  const getLetterSizes = (): number[] => {
+    const letters = [...PREVIEW_TEXT].filter(ch => ch !== ' ')
+    return letters.map((_, i) => Math.max(8, Math.round(baseSize() + getOffset(i))))
+  }
+
+  /** Dessine la courbe — axe x = index des lettres (0..n-1) */
   const drawCurve = () => {
     const ctx = curveRef?.getContext('2d')
     if (!ctx) return
     const w = curveRef.width
     const h = curveRef.height
     const pad = 6
-    const samples = 100
+    const n = [...PREVIEW_TEXT].filter(ch => ch !== ' ').length
+    const samples = Math.max(n * 10, 100)
 
     ctx.clearRect(0, 0, w, h)
     ctx.fillStyle = CANVAS_BG
@@ -81,25 +76,40 @@ export function MathFunction(props: Props) {
       ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke()
     }
 
-    // Ligne mediane
+    // Calculer les offsets pour chaque sample
+    const offsets: number[] = []
+    for (let i = 0; i < samples; i++) {
+      const x = (i / (samples - 1)) * (n - 1) // x parcourt 0..n-1
+      offsets.push(a() * evaluateMathExprSafe(expr(), b() * (x - c())))
+    }
+
+    const minV = Math.min(...offsets, 0)
+    const maxV = Math.max(...offsets, 0)
+    const range = maxV - minV || 1
+
+    // Ligne zero (baseSize)
+    const zeroY = pad + ((maxV - 0) / range) * (h - 2 * pad)
     ctx.strokeStyle = CANVAS_MIDLINE
     ctx.globalAlpha = 0.5
     ctx.setLineDash([6, 4])
-    ctx.beginPath(); ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(0, zeroY); ctx.lineTo(w, zeroY); ctx.stroke()
     ctx.setLineDash([])
     ctx.globalAlpha = 1
 
-    // Calculer les valeurs — meme domaine que getProfile: x ∈ [c, c+b]
-    const values: number[] = []
-    for (let i = 0; i < samples; i++) {
-      const t = i / (samples - 1)
-      const x = c() + t * b()
-      values.push(evaluateMathExprSafe(expr(), x))
+    // Graduations des lettres
+    ctx.fillStyle = CANVAS_MIDLINE
+    ctx.font = '10px Fredoka, sans-serif'
+    ctx.textAlign = 'center'
+    const letters = [...PREVIEW_TEXT].filter(ch => ch !== ' ')
+    for (let i = 0; i < letters.length; i++) {
+      const lx = pad + (i / (n - 1)) * (w - 2 * pad)
+      ctx.fillText(letters[i], lx, h - 1)
+      ctx.strokeStyle = CANVAS_GRID
+      ctx.lineWidth = 1
+      ctx.globalAlpha = 0.3
+      ctx.beginPath(); ctx.moveTo(lx, 0); ctx.lineTo(lx, h - 12); ctx.stroke()
+      ctx.globalAlpha = 1
     }
-
-    const minV = Math.min(...values)
-    const maxV = Math.max(...values)
-    const range = maxV - minV || 1
 
     // Courbe
     ctx.beginPath()
@@ -110,16 +120,16 @@ export function MathFunction(props: Props) {
 
     for (let i = 0; i < samples; i++) {
       const x = pad + (i / (samples - 1)) * (w - 2 * pad)
-      const norm = (values[i] - minV) / range
-      const y = pad + (1 - norm) * (h - 2 * pad)
+      const norm = (maxV - offsets[i]) / range
+      const y = pad + norm * (h - 2 * pad)
       if (i === 0) ctx.moveTo(x, y)
       else ctx.lineTo(x, y)
     }
     ctx.stroke()
 
-    // Remplissage sous la courbe
-    ctx.lineTo(pad + (w - 2 * pad), h - pad)
-    ctx.lineTo(pad, h - pad)
+    // Remplissage
+    ctx.lineTo(pad + (w - 2 * pad), zeroY)
+    ctx.lineTo(pad, zeroY)
     ctx.closePath()
     ctx.fillStyle = CANVAS_FILL
     ctx.fill()
@@ -130,7 +140,7 @@ export function MathFunction(props: Props) {
     drawCurve()
   })
 
-  /** HTML de preview — même format que applySizeProfile */
+  /** HTML de preview */
   const previewHtml = (): string => {
     const sizes = getLetterSizes()
     const chars = [...PREVIEW_TEXT].filter(ch => ch !== ' ')
@@ -139,19 +149,10 @@ export function MathFunction(props: Props) {
     ).join('')
   }
 
-  /** Genere un profil [0,1] — x parcourt [c, c+b] pour que b = etendue visible */
+  /** Profil = offsets bruts en px (pas normalise). applySizeProfile les utilise directement. */
   const getProfile = (): number[] => {
     const samples = 50
-    const raw: number[] = []
-    for (let i = 0; i < samples; i++) {
-      const t = i / (samples - 1)           // t ∈ [0, 1]
-      const x = c() + t * b()               // x ∈ [c, c+b]
-      raw.push(evaluateMathExprSafe(expr(), x))
-    }
-    const min = Math.min(...raw)
-    const max = Math.max(...raw)
-    const range = max - min || 1
-    return raw.map(v => (v - min) / range)
+    return Array.from({ length: samples }, (_, i) => getOffset(i))
   }
 
   const insertAtCursor = (text: string) => {
@@ -172,21 +173,21 @@ export function MathFunction(props: Props) {
     <div class="math-container">
       {/* Formule */}
       <div class="math-formula">
-        <span class="math-formula-f">f</span>
-        <span class="math-formula-paren">(x)</span>
-        <span class="math-formula-dot">&ensp;x ∈ [</span>
-        <span class="math-formula-c">c</span>
-        <span class="math-formula-dot">, c+</span>
-        <span class="math-formula-b">b</span>
-        <span class="math-formula-dot">]&ensp;×&ensp;</span>
         <span class="math-formula-a">a</span>
-        <span class="math-formula-dot">px</span>
+        <span class="math-formula-dot"> · </span>
+        <span class="math-formula-f">f</span>
+        <span class="math-formula-paren">(</span>
+        <span class="math-formula-b">b</span>
+        <span class="math-formula-dot"> · (x − </span>
+        <span class="math-formula-c">c</span>
+        <span class="math-formula-paren">)</span>
+        <span class="math-formula-paren">)</span>
       </div>
 
-      {/* Preview WYSIWYG — même rendu que les effets de taille */}
+      {/* Preview WYSIWYG exact */}
       <div class="math-text-preview" innerHTML={previewHtml()} />
 
-      {/* Courbe f(x) */}
+      {/* Courbe — axe x gradue sur les lettres du mot */}
       <canvas
         ref={curveRef}
         class="math-curve-canvas"
@@ -230,17 +231,17 @@ export function MathFunction(props: Props) {
       {/* Sliders a, b, c */}
       <div class="math-params">
         <div class="math-param">
-          <span class="math-param-name" title="Amplitude en pixels">a</span>
-          <input type="range" min="5" max="80" step="1" value={a()} onInput={(e) => setA(parseFloat(e.currentTarget.value))} />
-          <span class="math-param-val">{a().toFixed(0)}px</span>
+          <span class="math-param-name" title="Amplitude">a</span>
+          <input type="range" min="-30" max="30" step="0.5" value={a()} onInput={(e) => setA(parseFloat(e.currentTarget.value))} />
+          <span class="math-param-val">{a().toFixed(1)}</span>
         </div>
         <div class="math-param">
-          <span class="math-param-name" title="Etendue : x va de c a c+b">b</span>
-          <input type="range" min="0.5" max="20" step="0.1" value={b()} onInput={(e) => setB(parseFloat(e.currentTarget.value))} />
-          <span class="math-param-val">{b().toFixed(1)}</span>
+          <span class="math-param-name" title="Frequence">b</span>
+          <input type="range" min="0" max="5" step="0.05" value={b()} onInput={(e) => setB(parseFloat(e.currentTarget.value))} />
+          <span class="math-param-val">{b().toFixed(2)}</span>
         </div>
         <div class="math-param">
-          <span class="math-param-name" title="Debut du domaine">c</span>
+          <span class="math-param-name" title="Decalage">c</span>
           <input type="range" min="-10" max="10" step="0.1" value={c()} onInput={(e) => setC(parseFloat(e.currentTarget.value))} />
           <span class="math-param-val">{c().toFixed(1)}</span>
         </div>

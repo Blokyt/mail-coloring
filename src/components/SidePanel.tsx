@@ -66,10 +66,11 @@ export function SidePanel(props: { side: 'left' | 'right' }) {
       } else if (effect.type === 'custom-size' && effect.profile) {
         pushHistory(effect)
         const profile = effect.profile
-        const maxAdd = 40
+        // Detecter normalise [0,1] (ShapeCanvas) vs brut (MathFunction)
+        const isNorm = profile.every(v => v >= -0.01 && v <= 1.01)
+        const maxAdd = isNorm ? (effect.mathParams?.a ?? 40) : 1
         applySizeToSelection(
           (charIdx) => {
-            // Clamp l'index au profil, puis interpole
             const t = Math.min(charIdx / (profile.length - 1), 1)
             const pIdx = t * (profile.length - 1)
             const lo = Math.floor(pIdx)
