@@ -89,8 +89,8 @@ export function TutorialOverlay() {
     // Bulle : anchor-based
     const anchor = saved?.bubbleAnchor ?? s.position
     const base = computeAnchorPosition(anchor, rect, BUBBLE_WIDTH, BUBBLE_HEIGHT, BUBBLE_GAP)
-    let t = base.top + (saved?.bubbleOffsetX ?? 0)
-    let l = base.left + (saved?.bubbleOffsetY ?? 0)
+    let t = base.top + (saved?.bubbleOffsetY ?? 0)
+    let l = base.left + (saved?.bubbleOffsetX ?? 0)
 
     // Biais vers le centre
     const vw = window.innerWidth, vh = window.innerHeight

@@ -1,4 +1,4 @@
-import { Show, For, createSignal, createEffect, createMemo, onCleanup } from 'solid-js'
+import { Show, For, createSignal, createEffect, createMemo, onCleanup, untrack } from 'solid-js'
 import { Portal } from 'solid-js/web'
 import {
   TUTORIAL_STEPS, VALID_STEP_IDS, validateStep,
@@ -80,14 +80,45 @@ export function TutorialEditor() {
   const textCount = () => Object.keys(adminData().tutorialTexts).length
   const actionCount = () => Object.keys(adminData().tutorialActions).length
 
-  /* ── Charger les valeurs du step selectionne ── */
+  /* ── Auto-commit des edits dans adminData (en memoire) avant de changer de step ── */
+
+  function commitCurrentEdits() {
+    const s = untrack(step)
+    if (!s) return
+
+    // Sauver position en memoire
+    adminSetTutorialPosition(s.id, {
+      bubbleAnchor: editAnchor(),
+      bubbleOffsetX: editOffsetX(),
+      bubbleOffsetY: editOffsetY(),
+      spotPadding: editSpotPad(),
+    })
+
+    // Sauver texte en memoire
+    adminSetTutorialText(s.id, { title: editTitle(), description: editDesc() })
+
+    // Sauver action en memoire
+    const actionType = editActionType()
+    if (actionType !== 'none') {
+      adminSetTutorialAction(s.id, {
+        type: actionType as TutorialActionOverride['type'],
+        targetSelector: editActionSelector(),
+        hint: editActionHint(),
+        enabled: editActionEnabled(),
+      })
+    }
+  }
+
+  /* ── Charger les valeurs du step selectionne (untrack pour eviter le re-fire) ── */
 
   function loadStepValues() {
     const s = step()
     if (!s) return
-    const pos: TutorialPosition | undefined = adminData().tutorialPositions[s.id]
-    const text = adminData().tutorialTexts[s.id]
-    const action: TutorialActionOverride | undefined = adminData().tutorialActions[s.id]
+    // untrack: on lit adminData sans creer de dependance reactive
+    const data = untrack(adminData)
+    const pos: TutorialPosition | undefined = data.tutorialPositions[s.id]
+    const text = data.tutorialTexts[s.id]
+    const action: TutorialActionOverride | undefined = data.tutorialActions[s.id]
 
     setEditTitle(text?.title ?? s.title)
     setEditDesc(text?.description ?? s.description)
@@ -101,6 +132,8 @@ export function TutorialEditor() {
     setEditActionSelector(action?.targetSelector ?? codeAction?.targetSelector ?? s.targetSelector)
     setEditActionHint(action?.hint ?? codeAction?.hint ?? '')
     setEditActionEnabled(action?.enabled !== false)
+
+    setDirty(false)
   }
 
   /* ── Mesurer position bulle et spotlight ── */
@@ -130,8 +163,8 @@ export function TutorialEditor() {
     const anchor = editAnchor()
     const base = computeAnchorPosition(anchor, rect, BUBBLE_WIDTH, BUBBLE_HEIGHT, BUBBLE_GAP)
     setBubblePos({
-      top: Math.round(base.top + editOffsetX()),
-      left: Math.round(base.left + editOffsetY()),
+      top: Math.round(base.top + editOffsetY()),
+      left: Math.round(base.left + editOffsetX()),
     })
 
     if (rect.top < 0 || rect.bottom > window.innerHeight) {
@@ -140,9 +173,13 @@ export function TutorialEditor() {
   }
 
   // Charger + mesurer quand la step change
+  let editorInitialized = false
   createEffect(() => {
-    if (!editorOpen()) return
-    void selectedIdx()
+    if (!editorOpen()) { editorInitialized = false; return }
+    void selectedIdx() // track seulement selectedIdx et editorOpen
+    // Auto-commit les edits de la step precedente avant de charger la nouvelle
+    if (editorInitialized) commitCurrentEdits()
+    editorInitialized = true
     loadStepValues()
     const t = setTimeout(measure, 100)
     onCleanup(() => clearTimeout(t))
@@ -196,32 +233,7 @@ export function TutorialEditor() {
   async function saveStep() {
     const s = step()
     if (!s) return
-
-    // Sauver position
-    const pos: TutorialPosition = {
-      bubbleAnchor: editAnchor(),
-      bubbleOffsetX: editOffsetX(),
-      bubbleOffsetY: editOffsetY(),
-      spotPadding: editSpotPad(),
-    }
-    adminSetTutorialPosition(s.id, pos)
-
-    // Sauver texte (seulement si different du code)
-    if (editTitle() !== s.title || editDesc() !== s.description) {
-      adminSetTutorialText(s.id, { title: editTitle(), description: editDesc() })
-    }
-
-    // Sauver action
-    const actionType = editActionType()
-    if (actionType !== 'none') {
-      adminSetTutorialAction(s.id, {
-        type: actionType as TutorialActionOverride['type'],
-        targetSelector: editActionSelector(),
-        hint: editActionHint(),
-        enabled: editActionEnabled(),
-      })
-    }
-
+    commitCurrentEdits()
     const ok = await saveAdminData()
     setDirty(false)
     showToast(ok ? `Step "${s.id}" sauvegardee` : 'Erreur de sauvegarde', !ok)
