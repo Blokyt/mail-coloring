@@ -167,6 +167,7 @@ export function EffectsCatalog(props: Props) {
         type: 'custom-size',
         label: name,
         profile: pendingProfile()!,
+        rawProfile: !!pendingMathExpr(),  // MathFunction = offsets bruts
         mathExpr: pendingMathExpr(),
         mathParams: pendingMathParams(),
       })
@@ -290,6 +291,7 @@ export function EffectsCatalog(props: Props) {
                                 <EffectPreview
                                   text={word}
                                   customProfile={effect.profile}
+                                  rawProfile={effect.rawProfile}
                                   customColors={effect.customColors}
                                   composedData={effect.composedData}
                                   options={{ baseSize: baseSize(), amplitude: sizeAmplitude() }}

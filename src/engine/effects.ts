@@ -239,15 +239,16 @@ export function applyEffects(
 }
 
 /**
- * Applique un profil de taille personnalisé (depuis tracé souris ou fonction math).
- * `profile` est un tableau de valeurs normalisées [0..1] de longueur quelconque,
- * interpolé sur la longueur du texte.
+ * Applique un profil de taille personnalisé.
+ * Si raw=false (defaut) : profil [0,1], fontSize = baseSize + amplitude * value
+ * Si raw=true : profil en offsets px bruts, fontSize = baseSize + value
  */
 export function applySizeProfile(
   text: string,
   profile: number[],
   options: EffectOptions,
   colorEffectId?: string | null,
+  raw?: boolean,
 ): string {
   const chars = [...text]
   const colorEffect = colorEffectId ? COLOR_EFFECTS[colorEffectId] : null
@@ -267,7 +268,7 @@ export function applySizeProfile(
 
     const value = interpolateProfile(profile, charIdx, total)
 
-    const size = Math.max(8, Math.round(options.baseSize + options.amplitude * value))
+    const size = Math.max(8, Math.round(options.baseSize + (raw ? value : options.amplitude * value)))
     const styles: string[] = [`font-size:${size}px`]
 
     if (colorEffect) {

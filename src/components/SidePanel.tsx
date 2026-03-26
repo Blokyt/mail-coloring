@@ -69,6 +69,7 @@ export function SidePanel(props: { side: 'left' | 'right' }) {
       } else if (effect.type === 'custom-size' && effect.profile) {
         pushHistory(effect)
         const profile = effect.profile
+        const isRaw = !!effect.rawProfile
         const amp = opts().amplitude
         applySizeToSelection(
           (charIdx, total) => {
@@ -77,7 +78,8 @@ export function SidePanel(props: { side: 'left' | 'right' }) {
             const lo = Math.floor(pIdx)
             const hi = Math.min(lo + 1, profile.length - 1)
             const frac = pIdx - lo
-            return (profile[lo] * (1 - frac) + profile[hi] * frac) * amp
+            const v = profile[lo] * (1 - frac) + profile[hi] * frac
+            return isRaw ? v : v * amp
           },
           opts().baseSize
         )

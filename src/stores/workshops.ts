@@ -17,6 +17,8 @@ export interface WorkshopEffect {
   colors?: string[]
   sizeKey?: string
   profile?: number[]
+  /** true = profil contient des offsets bruts en px (MathFunction). false/absent = profil [0,1] (ShapeCanvas) */
+  rawProfile?: boolean
   mathExpr?: string
   mathParams?: { a: number; b: number; c: number }
   /** Pour custom-color : palette definie par l'utilisateur */

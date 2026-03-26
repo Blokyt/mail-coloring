@@ -44,40 +44,29 @@ export function MathFunction(props: Props) {
   const [c, setC] = createSignal(0)    // debut du domaine
 
   /**
-   * Domaine : x parcourt [c, c + b]. Chaque lettre i (0..n-1) correspond
-   * a x = c + (i/(n-1)) * b. b = etendue visible, c = decalage.
-   * Pour sin: b≈6.3 = une periode. Pour x^2: b=1 doux, b=3 pentu.
-   * On normalise en [0,1] (min→0, max→1) pour le stockage.
-   * L'amplitude globale controle ensuite la hauteur en px.
+   * Formule EXACTE : fontSize(i) = baseSize + a * f(b * (i - c))
+   * i = index lettre (0, 1, 2, ..., n-1). Aucune normalisation.
+   * a = sizeAmplitude() depuis la toolbar.
    */
-  const evalRaw = (letterIdx: number, n: number): number => {
-    const t = n <= 1 ? 0 : letterIdx / (n - 1)
-    const x = c() + t * b()
-    return evaluateMathExprSafe(expr(), x)
+  const getOffset = (i: number): number => {
+    return sizeAmplitude() * evaluateMathExprSafe(expr(), b() * (i - c()))
   }
 
-  /** Profil [0,1] sur 50 samples */
+  /** Profil = offsets bruts a*f(b*(i-c)) pour 50 samples sur [0, n-1] */
   const getProfile = (): number[] => {
     const n = [...PREVIEW_TEXT].filter(ch => ch !== ' ').length
     const samples = 50
-    const raw = Array.from({ length: samples }, (_, s) => {
+    return Array.from({ length: samples }, (_, s) => {
       const i = (s / (samples - 1)) * (n - 1)
-      return evalRaw(i, n)
+      return sizeAmplitude() * evaluateMathExprSafe(expr(), b() * (i - c()))
     })
-    const min = Math.min(...raw), max = Math.max(...raw), range = max - min || 1
-    return raw.map(v => (v - min) / range)
   }
 
-  /** Preview WYSIWYG : baseSize + amplitude * shape */
+  /** Preview EXACTE : baseSize + a * f(b * (i - c)) pour chaque lettre */
   const previewHtml = (): string => {
     const chars = [...PREVIEW_TEXT].filter(ch => ch !== ' ')
-    const n = chars.length
-    const amp = sizeAmplitude()
-    const rawValues = chars.map((_, i) => evalRaw(i, n))
-    const min = Math.min(...rawValues), max = Math.max(...rawValues), range = max - min || 1
     return chars.map((ch, i) => {
-      const shape = (rawValues[i] - min) / range
-      const size = Math.max(8, Math.round(baseSize() + amp * shape))
+      const size = Math.max(8, Math.round(baseSize() + getOffset(i)))
       return `<span style="font-size:${size}px">${ch}</span>`
     }).join('')
   }
@@ -98,11 +87,12 @@ export function MathFunction(props: Props) {
     ctx.strokeStyle = CANVAS_GRID; ctx.lineWidth = 1
     for (let y = 0; y < h; y += 25) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke() }
 
-    // Valeurs sur le domaine [c, c+b]
+    // Valeurs exactes : a * f(b * (i - c)) pour i de 0 a n-1
+    const amp = sizeAmplitude()
     const values: number[] = []
     for (let i = 0; i < samples; i++) {
       const idx = (i / (samples - 1)) * (n - 1)
-      values.push(evalRaw(idx, n))
+      values.push(amp * evaluateMathExprSafe(expr(), b() * (idx - c())))
     }
     const minV = Math.min(...values, 0), maxV = Math.max(...values, 0)
     const range = maxV - minV || 1
@@ -154,14 +144,16 @@ export function MathFunction(props: Props) {
   return (
     <div class="math-container">
       <div class="math-formula">
+        <span class="math-formula-a">{sizeAmplitude().toFixed(0)}</span>
+        <span class="math-formula-dot"> · </span>
         <span class="math-formula-f">f</span>
-        <span class="math-formula-paren">(x)</span>
-        <span class="math-formula-dot">&ensp;x ∈ [</span>
-        <span class="math-formula-c">c</span>
-        <span class="math-formula-dot">, c+</span>
-        <span class="math-formula-b">b</span>
-        <span class="math-formula-dot">]&ensp;|&ensp;amplitude </span>
-        <span class="math-formula-a">{sizeAmplitude().toFixed(0)}px</span>
+        <span class="math-formula-paren">(</span>
+        <span class="math-formula-b">{b().toFixed(1)}</span>
+        <span class="math-formula-dot"> · (x − </span>
+        <span class="math-formula-c">{c().toFixed(1)}</span>
+        <span class="math-formula-paren">)</span>
+        <span class="math-formula-paren">)</span>
+        <span class="math-formula-dot" style={{ "margin-left": "12px", color: "var(--muted)", "font-size": "var(--font-sm)" }}>x = 0, 1, ..., {[...PREVIEW_TEXT].filter(ch => ch !== ' ').length - 1}</span>
       </div>
 
       <div class="math-text-preview" innerHTML={previewHtml()} />

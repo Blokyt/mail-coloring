@@ -8,6 +8,7 @@ interface Props {
   customProfile?: number[] | null
   customColors?: string[] | null
   composedData?: ComposedEffectData | null
+  rawProfile?: boolean
   options?: Partial<EffectOptions>
 }
 
@@ -39,7 +40,7 @@ export function EffectPreview(props: Props) {
     // Custom size profile
     const profile = props.sizeProfile ?? props.customProfile
     if (profile && profile.length > 0) {
-      return applySizeProfile(props.text, profile, opts(), props.colorEffectId ?? null)
+      return applySizeProfile(props.text, profile, opts(), props.colorEffectId ?? null, props.rawProfile)
     }
     // Predefined effects
     return applyEffects(
