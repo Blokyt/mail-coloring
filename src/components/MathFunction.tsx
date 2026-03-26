@@ -44,14 +44,20 @@ export function MathFunction(props: Props) {
   const [b, setB] = createSignal(6.3)
   const [c, setC] = createSignal(0)
 
-  /** Calcule la taille de chaque lettre : baseSize + a·f(b·x+c) */
+  /** Calcule la taille de chaque lettre — MEME logique que applySizeProfile */
   const getLetterSizes = (): number[] => {
+    const prof = getProfile() // [0, 1] normalisé
     const letters = [...PREVIEW_TEXT].filter(ch => ch !== ' ')
     const n = letters.length
+    const maxAdd = 40 // meme valeur que applySizeProfile dans effects.ts
     return letters.map((_, i) => {
-      const x = n === 1 ? 0 : i / (n - 1) // x ∈ [0, 1]
-      const y = a() * evaluateMathExprSafe(expr(), b() * x + c())
-      return Math.max(10, Math.min(36, Math.round(baseSize() + y)))
+      const t = n === 1 ? 0 : i / (n - 1)
+      const pIdx = t * (prof.length - 1)
+      const lo = Math.floor(pIdx)
+      const hi = Math.min(lo + 1, prof.length - 1)
+      const frac = pIdx - lo
+      const value = prof[lo] * (1 - frac) + prof[hi] * frac
+      return Math.max(8, Math.round(baseSize() + value * maxAdd))
     })
   }
 
