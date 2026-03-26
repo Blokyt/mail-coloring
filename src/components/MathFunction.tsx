@@ -40,9 +40,9 @@ export function MathFunction(props: Props) {
   let curveRef!: HTMLCanvasElement
 
   const [expr, setExpr] = createSignal('sin(x)')
-  const [a, setA] = createSignal(40)   // amplitude en px (= maxAdd)
-  const [b, setB] = createSignal(6.3)  // frequence
-  const [c, setC] = createSignal(0)    // decalage horizontal
+  const [a, setA] = createSignal(40)   // amplitude en px
+  const [b, setB] = createSignal(6.3)  // etendue du domaine (x va de c a c+b)
+  const [c, setC] = createSignal(0)    // debut du domaine
 
   /** Calcule la taille de chaque lettre — a = amplitude (maxAdd) */
   const getLetterSizes = (): number[] => {
@@ -89,11 +89,12 @@ export function MathFunction(props: Props) {
     ctx.setLineDash([])
     ctx.globalAlpha = 1
 
-    // Calculer les valeurs — meme formule que getProfile: f(b*(x-c))
+    // Calculer les valeurs — meme domaine que getProfile: x ∈ [c, c+b]
     const values: number[] = []
     for (let i = 0; i < samples; i++) {
-      const t = i / (samples - 1) // t ∈ [0, 1]
-      values.push(evaluateMathExprSafe(expr(), b() * (t - c())))
+      const t = i / (samples - 1)
+      const x = c() + t * b()
+      values.push(evaluateMathExprSafe(expr(), x))
     }
 
     const minV = Math.min(...values)
@@ -138,13 +139,14 @@ export function MathFunction(props: Props) {
     ).join('')
   }
 
-  /** Genere un profil [0,1] — a est exclu (c'est l'amplitude appliquee apres) */
+  /** Genere un profil [0,1] — x parcourt [c, c+b] pour que b = etendue visible */
   const getProfile = (): number[] => {
     const samples = 50
     const raw: number[] = []
     for (let i = 0; i < samples; i++) {
-      const x = i / (samples - 1) // x ∈ [0, 1]
-      raw.push(evaluateMathExprSafe(expr(), b() * (x - c())))
+      const t = i / (samples - 1)           // t ∈ [0, 1]
+      const x = c() + t * b()               // x ∈ [c, c+b]
+      raw.push(evaluateMathExprSafe(expr(), x))
     }
     const min = Math.min(...raw)
     const max = Math.max(...raw)
@@ -171,14 +173,14 @@ export function MathFunction(props: Props) {
       {/* Formule */}
       <div class="math-formula">
         <span class="math-formula-f">f</span>
-        <span class="math-formula-paren">(</span>
-        <span class="math-formula-b">b</span>
-        <span class="math-formula-dot"> · (x - </span>
+        <span class="math-formula-paren">(x)</span>
+        <span class="math-formula-dot">&ensp;x ∈ [</span>
         <span class="math-formula-c">c</span>
-        <span class="math-formula-paren">)</span>
-        <span class="math-formula-paren">)</span>
-        <span class="math-formula-dot"> × amplitude </span>
+        <span class="math-formula-dot">, c+</span>
+        <span class="math-formula-b">b</span>
+        <span class="math-formula-dot">]&ensp;×&ensp;</span>
         <span class="math-formula-a">a</span>
+        <span class="math-formula-dot">px</span>
       </div>
 
       {/* Preview WYSIWYG — même rendu que les effets de taille */}
@@ -233,14 +235,14 @@ export function MathFunction(props: Props) {
           <span class="math-param-val">{a().toFixed(0)}px</span>
         </div>
         <div class="math-param">
-          <span class="math-param-name" title="Frequence / etirement">b</span>
-          <input type="range" min="0.1" max="20" step="0.1" value={b()} onInput={(e) => setB(parseFloat(e.currentTarget.value))} />
+          <span class="math-param-name" title="Etendue : x va de c a c+b">b</span>
+          <input type="range" min="0.5" max="20" step="0.1" value={b()} onInput={(e) => setB(parseFloat(e.currentTarget.value))} />
           <span class="math-param-val">{b().toFixed(1)}</span>
         </div>
         <div class="math-param">
-          <span class="math-param-name" title="Decalage horizontal">c</span>
-          <input type="range" min="-1" max="1" step="0.01" value={c()} onInput={(e) => setC(parseFloat(e.currentTarget.value))} />
-          <span class="math-param-val">{c().toFixed(2)}</span>
+          <span class="math-param-name" title="Debut du domaine">c</span>
+          <input type="range" min="-10" max="10" step="0.1" value={c()} onInput={(e) => setC(parseFloat(e.currentTarget.value))} />
+          <span class="math-param-val">{c().toFixed(1)}</span>
         </div>
       </div>
 
