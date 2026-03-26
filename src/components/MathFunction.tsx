@@ -40,16 +40,16 @@ export function MathFunction(props: Props) {
   let curveRef!: HTMLCanvasElement
 
   const [expr, setExpr] = createSignal('sin(x)')
-  const [a, setA] = createSignal(10)
-  const [b, setB] = createSignal(6.3)
-  const [c, setC] = createSignal(0)
+  const [a, setA] = createSignal(40)   // amplitude en px (= maxAdd)
+  const [b, setB] = createSignal(6.3)  // frequence
+  const [c, setC] = createSignal(0)    // decalage horizontal
 
-  /** Calcule la taille de chaque lettre — MEME logique que applySizeProfile */
+  /** Calcule la taille de chaque lettre — a = amplitude (maxAdd) */
   const getLetterSizes = (): number[] => {
     const prof = getProfile() // [0, 1] normalisé
     const letters = [...PREVIEW_TEXT].filter(ch => ch !== ' ')
     const n = letters.length
-    const maxAdd = 40 // meme valeur que applySizeProfile dans effects.ts
+    const amplitude = a() // a controle l'amplitude en px
     return letters.map((_, i) => {
       const t = n === 1 ? 0 : i / (n - 1)
       const pIdx = t * (prof.length - 1)
@@ -57,7 +57,7 @@ export function MathFunction(props: Props) {
       const hi = Math.min(lo + 1, prof.length - 1)
       const frac = pIdx - lo
       const value = prof[lo] * (1 - frac) + prof[hi] * frac
-      return Math.max(8, Math.round(baseSize() + value * maxAdd))
+      return Math.max(8, Math.round(baseSize() + value * amplitude))
     })
   }
 
@@ -89,12 +89,11 @@ export function MathFunction(props: Props) {
     ctx.setLineDash([])
     ctx.globalAlpha = 1
 
-    // Calculer les valeurs
+    // Calculer les valeurs — meme formule que getProfile: f(b*(x-c))
     const values: number[] = []
     for (let i = 0; i < samples; i++) {
       const t = i / (samples - 1) // t ∈ [0, 1]
-      const y = a() * evaluateMathExprSafe(expr(), b() * t + c())
-      values.push(y)
+      values.push(evaluateMathExprSafe(expr(), b() * (t - c())))
     }
 
     const minV = Math.min(...values)
@@ -139,13 +138,13 @@ export function MathFunction(props: Props) {
     ).join('')
   }
 
-  /** Genere un profil [0,1] fidele au preview — meme domaine que getLetterSizes */
+  /** Genere un profil [0,1] — a est exclu (c'est l'amplitude appliquee apres) */
   const getProfile = (): number[] => {
     const samples = 50
     const raw: number[] = []
     for (let i = 0; i < samples; i++) {
-      const x = i / (samples - 1) // x ∈ [0, 1] — meme que le preview
-      raw.push(a() * evaluateMathExprSafe(expr(), b() * x + c()))
+      const x = i / (samples - 1) // x ∈ [0, 1]
+      raw.push(evaluateMathExprSafe(expr(), b() * (x - c())))
     }
     const min = Math.min(...raw)
     const max = Math.max(...raw)
@@ -171,14 +170,15 @@ export function MathFunction(props: Props) {
     <div class="math-container">
       {/* Formule */}
       <div class="math-formula">
-        <span class="math-formula-a">a</span>
-        <span class="math-formula-dot"> · </span>
         <span class="math-formula-f">f</span>
         <span class="math-formula-paren">(</span>
         <span class="math-formula-b">b</span>
-        <span class="math-formula-dot"> · x + </span>
+        <span class="math-formula-dot"> · (x - </span>
         <span class="math-formula-c">c</span>
         <span class="math-formula-paren">)</span>
+        <span class="math-formula-paren">)</span>
+        <span class="math-formula-dot"> × amplitude </span>
+        <span class="math-formula-a">a</span>
       </div>
 
       {/* Preview WYSIWYG — même rendu que les effets de taille */}
@@ -228,19 +228,19 @@ export function MathFunction(props: Props) {
       {/* Sliders a, b, c */}
       <div class="math-params">
         <div class="math-param">
-          <span class="math-param-name">a</span>
-          <input type="range" min="-30" max="30" step="0.5" value={a()} onInput={(e) => setA(parseFloat(e.currentTarget.value))} />
-          <span class="math-param-val">{a().toFixed(1)}</span>
+          <span class="math-param-name" title="Amplitude en pixels">a</span>
+          <input type="range" min="5" max="80" step="1" value={a()} onInput={(e) => setA(parseFloat(e.currentTarget.value))} />
+          <span class="math-param-val">{a().toFixed(0)}px</span>
         </div>
         <div class="math-param">
-          <span class="math-param-name">b</span>
-          <input type="range" min="0" max="20" step="0.1" value={b()} onInput={(e) => setB(parseFloat(e.currentTarget.value))} />
+          <span class="math-param-name" title="Frequence / etirement">b</span>
+          <input type="range" min="0.1" max="20" step="0.1" value={b()} onInput={(e) => setB(parseFloat(e.currentTarget.value))} />
           <span class="math-param-val">{b().toFixed(1)}</span>
         </div>
         <div class="math-param">
-          <span class="math-param-name">c</span>
-          <input type="range" min="-10" max="10" step="0.1" value={c()} onInput={(e) => setC(parseFloat(e.currentTarget.value))} />
-          <span class="math-param-val">{c().toFixed(1)}</span>
+          <span class="math-param-name" title="Decalage horizontal">c</span>
+          <input type="range" min="-1" max="1" step="0.01" value={c()} onInput={(e) => setC(parseFloat(e.currentTarget.value))} />
+          <span class="math-param-val">{c().toFixed(2)}</span>
         </div>
       </div>
 
