@@ -157,7 +157,12 @@ function pushEntry(entry: UndoEntry) {
 
 export function initUndoSystem(el: HTMLDivElement) {
   editorRef = el
+  // Sauvegarder l'état initial (vide) pour pouvoir y revenir avec undo
+  initialHtml = compressToUTF16(el.innerHTML)
 }
+
+// État initial — permet de revenir à "vide" même après la première opération
+let initialHtml: string | null = null
 
 /**
  * Enregistre une opération nommée. Appeler AVANT la mutation DOM.
@@ -276,7 +281,7 @@ export function performUndo(): boolean {
 
   // Restaurer l'état
   const restored = decompressFromUTF16(entry.html)
-  if (!restored) return false
+  if (restored === null) return false
   editorRef.innerHTML = restored
 
   // Pousser l'état actuel dans redo
@@ -309,7 +314,7 @@ export function performRedo(): boolean {
 
   // Restaurer l'état
   const restored = decompressFromUTF16(entry.html)
-  if (!restored) return false
+  if (restored === null) return false
   editorRef.innerHTML = restored
 
   // Pousser l'état actuel dans undo

@@ -406,29 +406,13 @@ export function AdminPanel() {
                             <Show when={entry.source === 'base' && !!adminData().emojiOverrides[entry.id]}><span class="admin-modified-badge">renomme</span></Show>
                           </span>
                           <div class="admin-emoji-actions">
-                            <button
-                              class="admin-emoji-action-btn"
-                              onClick={() => startEmojiEdit(entry.id, entry.label)}
-                              title="Renommer"
-                            >✏️</button>
-                            <button
-                              class={`admin-emoji-action-btn ${entry.hidden ? 'admin-emoji-show-btn' : ''}`}
-                              onClick={() => adminToggleHideEmoji(entry.id)}
-                              title={entry.hidden ? 'Afficher' : 'Masquer'}
-                            >{entry.hidden ? '👁️' : '👁️‍🗨️'}</button>
+                            <button class="admin-emoji-action-btn" onClick={() => startEmojiEdit(entry.id, entry.label)} title="Renommer">Aa</button>
+                            <button class={`admin-emoji-action-btn ${entry.hidden ? 'admin-emoji-show-btn' : ''}`} onClick={() => adminToggleHideEmoji(entry.id)} title={entry.hidden ? 'Afficher' : 'Masquer'}>{entry.hidden ? '+' : '-'}</button>
                             <Show when={entry.source === 'admin'}>
-                              <button
-                                class="admin-emoji-action-btn admin-emoji-delete-btn"
-                                onClick={() => adminRemoveEmoji(entry.id)}
-                                title="Supprimer"
-                              >✕</button>
+                              <button class="admin-emoji-action-btn admin-emoji-delete-btn" onClick={() => adminRemoveEmoji(entry.id)} title="Supprimer">x</button>
                             </Show>
                             <Show when={entry.source === 'base' && !!adminData().emojiOverrides[entry.id]}>
-                              <button
-                                class="admin-emoji-action-btn"
-                                onClick={() => adminRenameEmoji(entry.id, '')}
-                                title="Reset nom"
-                              >↩</button>
+                              <button class="admin-emoji-action-btn" onClick={() => adminRenameEmoji(entry.id, '')} title="Reset nom">R</button>
                             </Show>
                           </div>
                         </>

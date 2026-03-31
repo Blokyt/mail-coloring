@@ -1,10 +1,10 @@
 import { For, Show, createSignal } from 'solid-js'
 import { Portal } from 'solid-js/web'
-import { baseSize, setBaseSize } from '../stores/editor'
+import { baseSize, setBaseSize, sizeAmplitude } from '../stores/editor'
 import { sizeFavorites, addSizeFavorite, removeSizeFavorite } from '../stores/workshops'
 import { getEmojiFavoritesList } from '../stores/emojis'
-import { getToolbarColors, getActivePalette, activePaletteId } from '../stores/palettes'
-import { applyInlineStyle, execFormatCommand, applyLink, getSelectedText, replaceSelectionWithHtml } from './Editor'
+import { getToolbarColors, getActivePalette, activePaletteId, removeToolbarColor, addToolbarColor } from '../stores/palettes'
+import { applyInlineStyle, execFormatCommand, applyLink, getSelectedText, replaceSelectionWithHtml, refreshSizeEffects } from './Editor'
 import { updateBuffer, getBuffer, setPreview } from './Header'
 import { EffectsCatalog } from './EffectsCatalog'
 import type { CatalogTab } from './EffectsCatalog'
@@ -131,6 +131,7 @@ function SizeControl(props: { value: number; onChange: (v: number) => void; onDr
 
 export function ToolbarPanel() {
   const [colorMode, setColorMode] = createSignal<'text' | 'bg'>('text')
+  const [selectedSwatch, setSelectedSwatch] = createSignal<string | null>(null)
   const [catalogOpen, setCatalogOpen] = createSignal(false)
   const [catalogTab, setCatalogTab] = createSignal<CatalogTab>('base')
   const [paletteOpen, setPaletteOpen] = createSignal(false)
@@ -211,19 +212,40 @@ export function ToolbarPanel() {
           </div>
           <div class="swatches">
             <For each={getToolbarColors()}>
-              {(c) => <div class="swatch" style={{ background: c.hex }} title={c.name} onClick={() => applyColor(c.hex)} />}
+              {(c) => {
+                const isSelected = () => selectedSwatch() === c.hex
+                return (
+                  <div class={`swatch-wrap ${isSelected() ? 'swatch-selected' : ''}`}>
+                    <div
+                      class={`swatch ${isSelected() ? 'swatch-active' : ''}`}
+                      style={{ background: c.hex }}
+                      title={c.name}
+                      onClick={() => {
+                        applyColor(c.hex)
+                        setSelectedSwatch(prev => prev === c.hex ? null : c.hex)
+                      }}
+                    />
+                    <Show when={isSelected()}>
+                      <button class="swatch-remove" onClick={(e) => { e.stopPropagation(); removeToolbarColor(c.hex); setSelectedSwatch(null) }}>
+                        <span class="swatch-remove-x" />
+                      </button>
+                    </Show>
+                  </div>
+                )
+              }}
             </For>
+            <div class="color-picker-wrapper">
+              <div class="color-picker-visual" />
+              <input type="color" value="#c42b45" onChange={(e) => addToolbarColor({ hex: e.currentTarget.value, name: e.currentTarget.value.toUpperCase() })} />
+            </div>
           </div>
           <button
             ref={paletteRef}
             class="palette-btn"
             onClick={togglePaletteManager}
-            title="Gerer les palettes"
+            title="Palettes"
           >
             <div class="palette-btn-icon" />
-            <Show when={getActivePalette()}>
-              <span class="palette-btn-name">{getActivePalette()!.name}</span>
-            </Show>
           </button>
         </div>
 
@@ -233,8 +255,8 @@ export function ToolbarPanel() {
           <div class="separator" />
           <SizeControl
             value={baseSize()}
-            onDrag={(v) => { setBaseSize(v); updateBuffer({ fontSize: v }) }}
-            onChange={(v) => { setBaseSize(v); applyInlineStyle('fontSize', `${v}px`); updateBuffer({ fontSize: v }) }}
+            onDrag={(v) => { setBaseSize(v); updateBuffer({ fontSize: v }); refreshSizeEffects(v, sizeAmplitude()) }}
+            onChange={(v) => { setBaseSize(v); updateBuffer({ fontSize: v }); refreshSizeEffects(v, sizeAmplitude()) }}
             onAddFav={() => addSizeFavorite(baseSize())}
           />
           <Show when={sizeFavorites().length > 0}>
@@ -244,7 +266,7 @@ export function ToolbarPanel() {
                   <div class="size-fav-chip">
                     <button
                       class="size-fav-value"
-                      onClick={() => { setBaseSize(size); applyInlineStyle('fontSize', `${size}px`); updateBuffer({ fontSize: size }) }}
+                      onClick={() => { setBaseSize(size); updateBuffer({ fontSize: size }) }}
                       onMouseEnter={() => setPreview({ fontSize: size })}
                       onMouseLeave={() => setPreview(null)}
                     >

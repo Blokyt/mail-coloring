@@ -74,7 +74,9 @@ export function SidePanel(props: { side: 'left' | 'right' }) {
             return opts().amplitude * sizeEffect.getShape(t)
           },
           opts().baseSize,
-          `Taille : ${effect.label}`
+          `Taille : ${effect.label}`,
+          effect.id,
+          opts().amplitude
         )
       } else if (effect.type === 'custom-size' && effect.profile) {
         pushHistory(effect)

@@ -230,10 +230,10 @@ export function applyColorToSelection(colors: string[], mode: 'text' | 'bg' = 't
 }
 
 /**
- * Applique un effet de taille sur la selection en preservant le formatage existant.
- * Chaque caractere non-espace recoit sa taille selon getOffset().
+ * Applique un effet de taille sur la selection.
+ * Wrappe le mot dans un span marqueur [data-size-effect] pour permettre le refresh live.
  */
-export function applySizeToSelection(getOffset: (charIdx: number, total: number) => number, baseSize: number, effectLabel?: string) {
+export function applySizeToSelection(getOffset: (charIdx: number, total: number) => number, baseSize: number, effectLabel?: string, sizeEffectId?: string, amplitude?: number) {
   if (!editorEl) return
   restoreSelection()
   const sel = window.getSelection()
@@ -244,11 +244,20 @@ export function applySizeToSelection(getOffset: (charIdx: number, total: number)
   const op = recordOperation(effectLabel || 'Taille', 'effect')
 
   const fragment = range.extractContents()
+
+  // Créer un wrapper marqueur pour le refresh live
+  const wrapper = document.createElement('span')
+  if (sizeEffectId) {
+    wrapper.dataset.sizeEffect = sizeEffectId
+    wrapper.dataset.baseSize = String(baseSize)
+    wrapper.dataset.amplitude = String(amplitude ?? 0)
+  }
+
+  // Collecter tous les text nodes
   const walker = document.createTreeWalker(fragment, NodeFilter.SHOW_TEXT)
   const textNodes: Text[] = []
   while (walker.nextNode()) textNodes.push(walker.currentNode as Text)
 
-  // Compter le total de non-space chars pour calculer t = charIdx / (total - 1)
   let total = 0
   for (const tn of textNodes) for (const ch of (tn.textContent || '')) if (ch !== ' ' && ch !== '\n' && ch !== '\t') total++
 
@@ -257,8 +266,6 @@ export function applySizeToSelection(getOffset: (charIdx: number, total: number)
     const text = textNode.textContent || ''
     const parent = textNode.parentElement
 
-    // Cas simple : le parent est un span avec un seul text node d'un seul char
-    // → on ajoute fontSize directement sur le span parent, pas besoin de recréer
     if (parent && parent.tagName === 'SPAN' && parent !== fragment as unknown as Element
         && parent.childNodes.length === 1 && text.length === 1 && text.trim().length === 1) {
       const offset = getOffset(charIdx, total)
@@ -267,7 +274,6 @@ export function applySizeToSelection(getOffset: (charIdx: number, total: number)
       continue
     }
 
-    // Cas général : texte brut ou multi-char, on split en spans individuels
     const charFrag = document.createDocumentFragment()
     for (const char of text) {
       if (char === ' ' || char === '\n' || char === '\t') {
@@ -284,10 +290,47 @@ export function applySizeToSelection(getOffset: (charIdx: number, total: number)
     textNode.parentNode?.replaceChild(charFrag, textNode)
   }
 
-  range.insertNode(fragment)
+  // Mettre le contenu dans le wrapper si on a un effectId
+  if (sizeEffectId) {
+    wrapper.appendChild(fragment)
+    range.insertNode(wrapper)
+  } else {
+    range.insertNode(fragment)
+  }
   op.commit()
   editorEl.focus()
   saveSelection()
+}
+
+/**
+ * Recalcule les tailles de tous les mots marqués [data-size-effect]
+ * quand le baseSize change via le slider.
+ */
+export function refreshSizeEffects(newBaseSize: number, newAmplitude: number) {
+  if (!editorEl) return
+  const markers = editorEl.querySelectorAll<HTMLSpanElement>('[data-size-effect]')
+  if (markers.length === 0) return
+
+  for (const marker of markers) {
+    const effectId = marker.dataset.sizeEffect!
+    const sizeEffect = SIZE_EFFECTS[effectId]
+    if (!sizeEffect) continue
+
+    // Mettre à jour les data attributes
+    marker.dataset.baseSize = String(newBaseSize)
+    marker.dataset.amplitude = String(newAmplitude)
+
+    // Recalculer chaque char span
+    const charSpans = marker.querySelectorAll<HTMLSpanElement>('span[style*="font-size"]')
+    const total = charSpans.length
+    let charIdx = 0
+    for (const span of charSpans) {
+      const t = total <= 1 ? 0 : charIdx / (total - 1)
+      const offset = newAmplitude * sizeEffect.getShape(t)
+      span.style.fontSize = `${Math.max(8, Math.round(newBaseSize + offset))}px`
+      charIdx++
+    }
+  }
 }
 
 /* ── Pagination constants ── */

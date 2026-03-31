@@ -85,7 +85,7 @@ export function getActivePalette(): UserPalette | null {
 export function getToolbarColors(): PaletteColor[] {
   const active = getActivePalette()
   if (active) return active.colors
-  return getVisibleBaseColors()
+  return [...getVisibleBaseColors(), ...customBaseColors()]
 }
 
 /* ── Mutations — Base colors ── */
@@ -104,6 +104,52 @@ export function isBaseColorHidden(hex: string): boolean {
 
 export function resetBaseColors() {
   persistHidden([])
+  persistCustomBase([])
+}
+
+/* ── Custom base colors (ajoutées à la barre de base par l'user) ── */
+
+const CUSTOM_BASE_KEY = 'artlequin_custom_base_colors'
+const [customBaseColors, setCustomBaseColors] = createSignal<PaletteColor[]>(
+  load<PaletteColor[]>(CUSTOM_BASE_KEY, [])
+)
+
+function persistCustomBase(colors: PaletteColor[]) {
+  setCustomBaseColors(colors)
+  save(CUSTOM_BASE_KEY, colors)
+}
+
+export function addCustomBaseColor(color: PaletteColor) {
+  const current = customBaseColors()
+  if (current.some(c => c.hex.toLowerCase() === color.hex.toLowerCase())) return
+  persistCustomBase([...current, color])
+}
+
+export function removeCustomBaseColor(hex: string) {
+  persistCustomBase(customBaseColors().filter(c => c.hex !== hex))
+}
+
+export function removeToolbarColor(hex: string) {
+  const active = getActivePalette()
+  if (active) {
+    removeColorFromPalette(active.id, hex)
+  } else {
+    // Couleur de base → masquer, couleur custom → supprimer
+    if (VENETIAN_PALETTE.some(c => c.hex === hex)) {
+      toggleBaseColor(hex)
+    } else {
+      removeCustomBaseColor(hex)
+    }
+  }
+}
+
+export function addToolbarColor(color: PaletteColor) {
+  const active = getActivePalette()
+  if (active) {
+    addColorToPalette(active.id, color)
+  } else {
+    addCustomBaseColor(color)
+  }
 }
 
 /* ── Mutations — Palettes ── */
