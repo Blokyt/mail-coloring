@@ -20,10 +20,13 @@ export interface CharStyle {
 // TYPES D'EFFETS
 // ============================================
 
+export type ColorMode = 'text' | 'bg'
+
 export interface ColorEffect {
   name: string
   icon: string
   colors: string[]
+  mode?: ColorMode
   /** Décoration optionnelle (emojis avant/après) */
   decoration?: { before: string; after: string }
 }
@@ -105,22 +108,74 @@ export const COLOR_EFFECTS: Record<string, ColorEffect> = {
     icon: '',
     colors: ['#1a1a3e', '#2d2b55', '#4a3f6b', '#7b6ba0', '#a59bc8'],
   },
+  // ── Mines assos ──
+  feministes: {
+    name: 'feMINistes',
+    icon: '',
+    colors: ['#9b59b6', '#8e44ad', '#c026d3', '#e91e9c', '#ff69b4'],
+  },
+  candy: {
+    name: 'Candy',
+    icon: '',
+    colors: ['#ff69b4', '#ff1493', '#c026d3', '#9b59b6', '#e91e9c'],
+  },
+  papimamine: {
+    name: 'PapiMamine',
+    icon: '',
+    colors: ['#1a3aff', '#0066ff', '#008a3e', '#00aa00', '#00cc44'],
+  },
+  fromage: {
+    name: 'Fromage',
+    icon: '',
+    colors: ['#ff00ff', '#c026d3', '#9b2d8e', '#7b2cbf', '#e91e9c'],
+  },
+  sapin: {
+    name: 'Sapin',
+    icon: '',
+    colors: ['#ff0000', '#00cc00', '#ff0000', '#00cc00'],
+  },
+  montagne: {
+    name: 'Montagne',
+    icon: '',
+    colors: ['#00d4ff', '#ff8c00', '#00d4ff', '#ff8c00'],
+  },
+  ecolo: {
+    name: 'Ecolo',
+    icon: '',
+    colors: ['#ffe600', '#7bcf3c', '#ffe600', '#2db82d'],
+  },
+  bonbon: {
+    name: 'Bonbon',
+    icon: '',
+    colors: ['#ff69b4', '#ffb6c1', '#ff69b4', '#da70d6', '#ff69b4'],
+  },
 }
 
-/** Retourne les effets couleur effectifs (hardcoded + overrides admin) */
-export function getEffectiveColorEffects(adminOverrides?: Record<string, { name: string; colors: string[] }>): Record<string, ColorEffect> {
-  if (!adminOverrides || Object.keys(adminOverrides).length === 0) return COLOR_EFFECTS
+/** Retourne les effets couleur texte (base + overrides admin, filtré par hidden) */
+export function getEffectiveColorEffects(adminOverrides?: Record<string, { name: string; colors: string[] }>, hiddenIds?: string[]): Record<string, ColorEffect> {
+  const hidden = new Set(hiddenIds ?? [])
   const result: Record<string, ColorEffect> = {}
-  // Base effects, overridden if admin has changes
   for (const [id, effect] of Object.entries(COLOR_EFFECTS)) {
-    const ov = adminOverrides[id]
+    if (hidden.has(id)) continue
+    const ov = adminOverrides?.[id]
     result[id] = ov ? { ...effect, name: ov.name, colors: ov.colors } : effect
   }
-  // Admin-only effects (not in base)
-  for (const [id, ov] of Object.entries(adminOverrides)) {
-    if (!COLOR_EFFECTS[id]) {
-      result[id] = { name: ov.name, icon: '', colors: ov.colors }
+  if (adminOverrides) {
+    for (const [id, ov] of Object.entries(adminOverrides)) {
+      if (!COLOR_EFFECTS[id] && !hidden.has(id)) {
+        result[id] = { name: ov.name, icon: '', colors: ov.colors }
+      }
     }
+  }
+  return result
+}
+
+/** Les effets fond sont toujours déduits des effets texte — jamais créés séparément */
+export function getEffectiveBgEffects(adminOverrides?: Record<string, { name: string; colors: string[] }>, hiddenIds?: string[]): Record<string, ColorEffect> {
+  const textEffects = getEffectiveColorEffects(adminOverrides, hiddenIds)
+  const result: Record<string, ColorEffect> = {}
+  for (const [id, effect] of Object.entries(textEffects)) {
+    result[`${id}_bg`] = { ...effect, mode: 'bg' }
   }
   return result
 }
@@ -216,7 +271,8 @@ export function applyEffects(
 
     if (colorEffect) {
       const color = colorEffect.colors[charIdx % colorEffect.colors.length]
-      styles.push(`color:${color}`)
+      const prop = colorEffect.mode === 'bg' ? 'background-color' : 'color'
+      styles.push(`${prop}:${color}`)
     }
 
     if (sizeEffect) {
@@ -273,7 +329,8 @@ export function applySizeProfile(
 
     if (colorEffect) {
       const color = colorEffect.colors[charIdx % colorEffect.colors.length]
-      styles.push(`color:${color}`)
+      const prop = colorEffect.mode === 'bg' ? 'background-color' : 'color'
+      styles.push(`${prop}:${color}`)
     }
 
     parts.push(`<span style="${styles.join(';')}">${char}</span>`)
@@ -292,19 +349,25 @@ export function applyComposedEffect(
   data: ComposedEffectData,
   options: EffectOptions,
   resolvedColors?: string[] | null,
+  colorMode?: ColorMode | null,
 ): string {
   const chars = [...text]
   const sizeEffect = data.sizeEffectRef ? SIZE_EFFECTS[data.sizeEffectRef] : null
+  const colorEffect = data.colorEffectRef ? COLOR_EFFECTS[data.colorEffectRef] : null
   const colors = resolvedColors
-    ?? (data.colorEffectRef ? COLOR_EFFECTS[data.colorEffectRef]?.colors : null)
+    ?? (colorEffect?.colors)
     ?? (data.flatColor ? [data.flatColor] : null)
+  const mode = colorMode ?? colorEffect?.mode ?? 'text'
 
   const nonSpaceCount = chars.filter(c => c !== ' ').length
   let charIdx = 0
   const inner = chars.map(char => {
     if (char === ' ') return ' '
     const styles: string[] = []
-    if (colors) styles.push(`color:${colors[charIdx % colors.length]}`)
+    if (colors) {
+      const prop = mode === 'bg' ? 'background-color' : 'color'
+      styles.push(`${prop}:${colors[charIdx % colors.length]}`)
+    }
     if (sizeEffect) {
       const t = nonSpaceCount <= 1 ? 0 : charIdx / (nonSpaceCount - 1)
       const size = Math.max(8, Math.round(options.baseSize + options.amplitude * sizeEffect.getShape(t)))
@@ -322,32 +385,137 @@ export function applyComposedEffect(
   return `${before}${inner}${after}`
 }
 
-/** Évaluateur simple d'expressions math en x (safe: retourne 0 en cas d'erreur) */
+/** Évaluateur safe d'expressions math en x — parseur recursive descent, zéro eval */
 export function evaluateMathExprSafe(expr: string, x: number): number {
-  try { return evaluateMathExpr(expr, x) } catch { return 0 }
+  try { return parseMathExpr(expr, x) } catch { return 0 }
 }
 
-function evaluateMathExpr(expr: string, x: number): number {
-  const sanitized = expr
-    .replace(/\bsin\b/g, 'Math.sin')
-    .replace(/\bcos\b/g, 'Math.cos')
-    .replace(/\btan\b/g, 'Math.tan')
-    .replace(/\babs\b/g, 'Math.abs')
-    .replace(/\bsqrt\b/g, 'Math.sqrt')
-    .replace(/\blog\b/g, 'Math.log')
-    .replace(/\bpi\b/gi, 'Math.PI')
-    .replace(/\bexp\b/g, 'Math.exp')
-    .replace(/\^/g, '**')
-    .replace(/\bx\b/g, `(${x})`)
+const MATH_FUNCS: Record<string, (v: number) => number> = {
+  sin: Math.sin, cos: Math.cos, tan: Math.tan,
+  abs: Math.abs, sqrt: Math.sqrt, log: Math.log, exp: Math.exp,
+}
 
-  // Vérifier que l'expression ne contient que des caractères math sûrs
-  if (!/^[\d\s+\-*/().Math,sincotagblqrtexpPI*]+$/.test(sanitized)) {
-    return 0
+const MATH_CONSTS: Record<string, number> = { pi: Math.PI, e: Math.E }
+
+/**
+ * Recursive descent parser pour expressions mathématiques.
+ * Grammaire :
+ *   expr   = term (('+' | '-') term)*
+ *   term   = power (('*' | '/') power)*
+ *   power  = unary ('^' power)?        (right-associative)
+ *   unary  = '-' unary | atom
+ *   atom   = number | 'x' | const | func '(' expr ')' | '(' expr ')'
+ */
+function parseMathExpr(expr: string, x: number): number {
+  const tokens = tokenize(expr)
+  let pos = 0
+
+  function peek(): string | null { return pos < tokens.length ? tokens[pos] : null }
+  function consume(): string { return tokens[pos++] }
+  function expect(t: string) { if (consume() !== t) throw new Error(`Expected '${t}'`) }
+
+  function parseExpr(): number {
+    let left = parseTerm()
+    while (peek() === '+' || peek() === '-') {
+      const op = consume()
+      const right = parseTerm()
+      left = op === '+' ? left + right : left - right
+    }
+    return left
   }
 
-  // eslint-disable-next-line no-eval
-  const result = new Function(`return ${sanitized}`)()
-  if (typeof result !== 'number' || !isFinite(result)) return 0
+  function parseTerm(): number {
+    let left = parsePower()
+    while (peek() === '*' || peek() === '/') {
+      const op = consume()
+      const right = parsePower()
+      left = op === '*' ? left * right : left / right
+    }
+    return left
+  }
+
+  function parsePower(): number {
+    const base = parseUnary()
+    if (peek() === '^') { consume(); return Math.pow(base, parsePower()) }
+    return base
+  }
+
+  function parseUnary(): number {
+    if (peek() === '-') { consume(); return -parseUnary() }
+    if (peek() === '+') { consume(); return parseUnary() }
+    return parseAtom()
+  }
+
+  function parseAtom(): number {
+    const t = peek()
+    if (t === null) throw new Error('Unexpected end')
+
+    // Nombre
+    if (/^\d/.test(t)) { consume(); return parseFloat(t) }
+
+    // Variable x
+    if (t === 'x') { consume(); return x }
+
+    // Constante ou fonction
+    if (/^[a-z]/i.test(t)) {
+      const name = consume().toLowerCase()
+      if (name in MATH_CONSTS) return MATH_CONSTS[name]
+      if (name in MATH_FUNCS) {
+        expect('(')
+        const arg = parseExpr()
+        expect(')')
+        return MATH_FUNCS[name](arg)
+      }
+      throw new Error(`Unknown: '${name}'`)
+    }
+
+    // Parenthèses
+    if (t === '(') { consume(); const v = parseExpr(); expect(')'); return v }
+
+    throw new Error(`Unexpected: '${t}'`)
+  }
+
+  // Supporter la multiplication implicite : 2x, 2sin(x), 2(x)
+  function tokenize(input: string): string[] {
+    const toks: string[] = []
+    let i = 0
+    const s = input.replace(/\s+/g, '')
+    while (i < s.length) {
+      const ch = s[i]
+      // Nombre (int ou float)
+      if (/\d/.test(ch) || (ch === '.' && i + 1 < s.length && /\d/.test(s[i + 1]))) {
+        let num = ''
+        while (i < s.length && (/\d/.test(s[i]) || s[i] === '.')) num += s[i++]
+        toks.push(num)
+        // Multiplication implicite : 2x, 2sin, 2(
+        if (i < s.length && (/[a-zA-Z]/.test(s[i]) || s[i] === '(')) toks.push('*')
+      }
+      // Identifiant (fonction, constante, x)
+      else if (/[a-zA-Z]/.test(ch)) {
+        let id = ''
+        while (i < s.length && /[a-zA-Z]/.test(s[i])) id += s[i++]
+        toks.push(id)
+        // Multiplication implicite après constante/x suivie de nombre ou (
+        if (id !== 'x' && !(id.toLowerCase() in MATH_FUNCS)) {
+          if (i < s.length && (/\d/.test(s[i]) || s[i] === '(' || /[a-zA-Z]/.test(s[i]))) toks.push('*')
+        }
+        if (id === 'x' && i < s.length && (/\d/.test(s[i]) || /[a-zA-Z]/.test(s[i]) || s[i] === '(')) toks.push('*')
+      }
+      // Opérateurs et parenthèses
+      else if ('+-*/^()'.includes(ch)) {
+        toks.push(ch)
+        i++
+        // Multiplication implicite : )(, )x, )2
+        if (ch === ')' && i < s.length && (/[a-zA-Z\d(]/.test(s[i]))) toks.push('*')
+      }
+      else { i++ } // skip unknown chars
+    }
+    return toks
+  }
+
+  const result = parseExpr()
+  if (pos < tokens.length) throw new Error('Unexpected trailing tokens')
+  if (!isFinite(result)) return 0
   return result
 }
 

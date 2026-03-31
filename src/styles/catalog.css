@@ -106,8 +106,8 @@
 
 /* ── Emoji Picker ── */
 .emoji-picker-wrap{position:relative;display:inline-block}
-.emoji-picker-trigger{min-width:60px;font-size:var(--font-md)}
-.emoji-picker-trigger.has-value{font-size:1.2rem}
+.emoji-picker-trigger{height:var(--btn-size);border-radius:var(--radius-sm) !important;padding:0 10px !important;font-size:var(--font-sm);min-width:0}
+.emoji-picker-trigger.has-value{font-size:1.2rem;padding:0 6px !important}
 .emoji-picker-backdrop{position:fixed;inset:0;z-index:1000}
 .emoji-picker{background:var(--white);border:var(--border) solid var(--soft-black);border-radius:var(--radius-md);box-shadow:var(--shadow-x) var(--shadow-y) 0 var(--shadow-color);z-index:1001;padding:12px;min-width:280px;max-height:320px;overflow-y:auto}
 .emoji-picker-section{margin-bottom:10px}
@@ -119,10 +119,16 @@
 .emoji-picker-add-btn{font-family:'Fredoka',sans-serif;font-weight:600;font-size:var(--font-sm);color:var(--lavender);background:none;border:none;cursor:pointer;padding:4px 0}
 .emoji-picker-add-btn:hover{color:var(--soft-black)}
 .emoji-picker-add-form{display:flex;gap:6px;align-items:center}
-.emoji-picker-add-input{font-size:var(--font-md);padding:4px 8px;border:var(--border) solid var(--soft-black);border-radius:var(--radius-sm);width:120px;outline:none}
+.emoji-picker-add-input{font-size:1.4rem;padding:4px 8px;border:var(--border) solid var(--soft-black);border-radius:var(--radius-sm);width:80px;outline:none;text-align:center}
+.emoji-picker-hint{font-family:'Fredoka',sans-serif;font-size:var(--font-xs);color:var(--muted);margin-top:4px;font-style:italic}
 
-/* ── Emoji item avec etoile favori ── */
-.emoji-picker-item{display:inline-flex;flex-direction:column;align-items:center;gap:0}
-.emoji-fav-star{background:none;border:none;font-size:9px;cursor:pointer;color:var(--muted);padding:0;line-height:1;transition:color .1s}
-.emoji-fav-star:hover{color:var(--peach)}
-.emoji-fav-star.is-fav{color:var(--peach)}
+/* ── Emoji items ── */
+.emoji-picker-item{position:relative;display:inline-flex}
+.emoji-fav-btn{display:none;position:absolute;top:-6px;left:-4px;width:18px;height:18px;border-radius:50%;background:var(--white);border:2px solid var(--separator);color:var(--muted);font-size:10px;cursor:pointer;align-items:center;justify-content:center;line-height:1;padding:0;z-index:2;transition:all .1s}
+.emoji-picker-item:hover .emoji-fav-btn{display:flex}
+.emoji-fav-btn.is-fav{display:flex;background:var(--peach);border-color:var(--peach);color:var(--white)}
+.emoji-fav-btn:hover{transform:scale(1.15);border-color:var(--peach);color:var(--peach)}
+.emoji-fav-btn.is-fav:hover{background:var(--muted);border-color:var(--muted)}
+.emoji-picker-item-perso .emoji-picker-remove{display:none;position:absolute;top:-6px;right:-4px;width:18px;height:18px;border-radius:50%;background:var(--soft-black);color:var(--white);border:none;font-size:9px;cursor:pointer;align-items:center;justify-content:center;line-height:1;padding:0;z-index:2}
+.emoji-picker-item-perso:hover .emoji-picker-remove{display:flex}
+.emoji-picker-btn.is-fav{box-shadow:inset 0 -2px 0 var(--peach)}

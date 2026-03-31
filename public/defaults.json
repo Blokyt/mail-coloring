@@ -39,7 +39,7 @@
   "--shadow-y": 5,
   "--btn-size": 38,
   "--swatch-size": 28,
-  "--side-width-left": 120,
+  "--side-width-left": 220,
   "--side-width-right": 120,
   "--toolbar-pad": 6,
   "--header-pad": 8,

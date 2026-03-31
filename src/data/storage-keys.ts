@@ -23,7 +23,4 @@ export const KEYS = {
 
   // CSS
   CSS_PERSONAL: 'artlequin_css_personal',
-
-  // Tutorial
-  TUTORIAL_DONE: 'artlequin_tutorial_done',
 } as const

@@ -4,6 +4,9 @@ export const COLOR_ACCENTS: Record<string, string> = {
   arcenciel: '#ff4d6d', arlequin: '#c42b45', flamme: '#ffe066',
   ocean: '#0077b6', foret: '#2d6a4f', dore: '#c9a84c',
   mystere: '#a855f7', pastel: '#f472b6', nuit: '#6366f1',
+  feministes: '#c026d3', candy: '#ff1493', papimamine: '#0066ff',
+  fromage: '#ff00ff', sapin: '#00cc00', montagne: '#00d4ff',
+  ecolo: '#7bcf3c', bonbon: '#ff69b4',
 }
 
 export const SIZE_ACCENTS: Record<string, string> = {

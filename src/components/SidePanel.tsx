@@ -1,7 +1,7 @@
 import { For, Show, createSignal, createEffect, on } from 'solid-js'
 import { COLOR_EFFECTS, SIZE_EFFECTS, applyEffects, applyComposedEffect } from '../engine/effects'
 import { sparklineFromEffect } from '../engine/sparkline'
-import { activeColorEffect, setActiveColorEffect, activeSizeEffect, setActiveSizeEffect, baseSize, sizeAmplitude, setCustomSizeProfile } from '../stores/editor'
+import { baseSize, sizeAmplitude, setCustomSizeProfile } from '../stores/editor'
 import { getFavorites, getBaseEffects, getPersoEffects, history, pushHistory, type WorkshopEffect } from '../stores/workshops'
 import { getSelectedText, applyColorToSelection, applySizeToSelection, replaceSelectionWithHtml } from './Editor'
 import { showToast } from './Toast'
@@ -11,13 +11,16 @@ import { COLOR_ACCENTS, SIZE_ACCENTS } from '../data/accents'
 // ── Rendu HTML pour effets couleur ──
 
 function renderColorName(effect: WorkshopEffect): string {
-  if (effect.type === 'custom-color' && effect.customColors) {
+  const colors = effect.customColors ?? effect.colors
+  if (colors && colors.length > 0) {
+    const isBg = effect.colorMode === 'bg'
+    const prop = isBg ? 'background-color' : 'color'
     let idx = 0
     return [...effect.label].map(ch => {
       if (ch === ' ') return ' '
-      const c = effect.customColors![idx % effect.customColors!.length]
+      const c = colors[idx % colors.length]
       idx++
-      return `<span style="color:${c}">${ch}</span>`
+      return `<span style="${prop}:${c}">${ch}</span>`
     }).join('')
   }
   return applyEffects(effect.label, effect.id, null, { baseSize: 11 })
@@ -30,11 +33,15 @@ export function SidePanel(props: { side: 'left' | 'right' }) {
   const isLeft = () => props.side === 'left'
 
   const isColorType = (e: WorkshopEffect) => e.type === 'color' || e.type === 'custom-color'
+  const isColorText = (e: WorkshopEffect) => isColorType(e) && (e.colorMode ?? 'text') === 'text'
+  const isColorBg = (e: WorkshopEffect) => isColorType(e) && e.colorMode === 'bg'
   const isSizeType = (e: WorkshopEffect) => e.type === 'size' || e.type === 'custom-size'
   const isComposedType = (e: WorkshopEffect) => e.type === 'composed'
   const matchesSide = (e: WorkshopEffect) => isComposedType(e) || (isLeft() ? isColorType(e) : isSizeType(e))
 
   const baseEffects = () => getBaseEffects().filter(matchesSide)
+  const baseTextEffects = () => getBaseEffects().filter(e => isColorText(e))
+  const baseBgEffects = () => getBaseEffects().filter(e => isColorBg(e))
 
   const persoEffectsForSide = () => getPersoEffects().filter(matchesSide)
 
@@ -47,13 +54,15 @@ export function SidePanel(props: { side: 'left' | 'right' }) {
     const text = getSelectedText()
     if (text) {
       if (effect.type === 'color') {
-        const colorEffect = COLOR_EFFECTS[effect.id]
-        if (!colorEffect) return
+        const colors = effect.colors ?? COLOR_EFFECTS[effect.id]?.colors
+        if (!colors) return
         pushHistory(effect)
-        applyColorToSelection(colorEffect.colors)
+        const modeLabel = (effect.colorMode ?? 'text') === 'bg' ? 'Fond' : 'Couleur'
+        applyColorToSelection(colors, effect.colorMode ?? 'text', `${modeLabel} : ${effect.label}`)
       } else if (effect.type === 'custom-color' && effect.customColors) {
         pushHistory(effect)
-        applyColorToSelection(effect.customColors)
+        const modeLabel2 = (effect.colorMode ?? 'text') === 'bg' ? 'Fond' : 'Couleur'
+        applyColorToSelection(effect.customColors, effect.colorMode ?? 'text', `${modeLabel2} : ${effect.label}`)
       } else if (effect.type === 'size') {
         const sizeEffect = SIZE_EFFECTS[effect.id]
         if (!sizeEffect) return
@@ -64,7 +73,8 @@ export function SidePanel(props: { side: 'left' | 'right' }) {
             const t = total <= 1 ? 0 : charIdx / (total - 1)
             return opts().amplitude * sizeEffect.getShape(t)
           },
-          opts().baseSize
+          opts().baseSize,
+          `Taille : ${effect.label}`
         )
       } else if (effect.type === 'custom-size' && effect.profile) {
         pushHistory(effect)
@@ -81,7 +91,8 @@ export function SidePanel(props: { side: 'left' | 'right' }) {
             const v = profile[lo] * (1 - frac) + profile[hi] * frac
             return isRaw ? v : v * amp
           },
-          opts().baseSize
+          opts().baseSize,
+          `Taille : ${effect.label}`
         )
       } else if (effect.type === 'composed' && effect.composedData) {
         pushHistory(effect)
@@ -93,29 +104,13 @@ export function SidePanel(props: { side: 'left' | 'right' }) {
           if (perso?.customColors) resolvedColors = perso.customColors
         }
         const html = applyComposedEffect(text, effect.composedData, opts(), resolvedColors)
-        replaceSelectionWithHtml(html)
+        replaceSelectionWithHtml(html, `Composé : ${effect.label}`)
       }
       showToast('Effet applique !')
     } else {
-      if (effect.type === 'composed' && effect.composedData) {
-        // Armer les sous-effets du compose
-        if (effect.composedData.colorEffectRef) setActiveColorEffect(effect.composedData.colorEffectRef)
-        if (effect.composedData.sizeEffectRef) setActiveSizeEffect(effect.composedData.sizeEffectRef)
-      } else if (effect.type === 'color' || effect.type === 'custom-color') {
-        setActiveColorEffect(prev => prev === effect.id ? null : effect.id)
-      } else {
-        if (effect.type === 'custom-size' && effect.profile) {
-          setCustomSizeProfile(effect.profile)
-        } else {
-          setCustomSizeProfile(null)
-        }
-        setActiveSizeEffect(prev => prev === effect.id ? null : effect.id)
-      }
+      showToast('Selectionnez du texte d\'abord', true)
     }
   }
-
-  const isArmed = (id: string) =>
-    isLeft() ? activeColorEffect() === id : activeSizeEffect() === id
 
   // Animation recents
   const [animatingIds, setAnimatingIds] = createSignal<Set<string>>(new Set())
@@ -143,7 +138,6 @@ export function SidePanel(props: { side: 'left' | 'right' }) {
     const parts = ['side-tag']
     if (!isLeft()) parts.push('side-tag-size')
     if (extra) parts.push(extra)
-    if (isArmed(id)) parts.push('armed')
     return parts.join(' ')
   }
 
@@ -185,9 +179,29 @@ export function SidePanel(props: { side: 'left' | 'right' }) {
       ? <ColorTag effect={p.effect} extra={p.extra} />
       : <SizeTag effect={p.effect} extra={p.extra} />
 
+  // Layout 2 colonnes pour le panel gauche (texte | fond)
+  if (isLeft()) {
+    return (
+      <div class="side-panel side-panel-left side-panel-dual">
+        <div class="side-col">
+          <div class="side-panel-title">Texte</div>
+          <For each={baseTextEffects()}>
+            {(effect) => <EffectTag effect={effect} />}
+          </For>
+        </div>
+        <div class="side-col">
+          <div class="side-panel-title">Fond</div>
+          <For each={baseBgEffects()}>
+            {(effect) => <EffectTag effect={effect} />}
+          </For>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div class={`side-panel ${isLeft() ? 'side-panel-left' : 'side-panel-right'}`}>
-      <div class="side-panel-title">{isLeft() ? 'Couleur' : 'Taille'}</div>
+    <div class="side-panel side-panel-right">
+      <div class="side-panel-title">Taille</div>
 
       <Show when={favs().length > 0}>
         <div class="side-label">Favoris</div>

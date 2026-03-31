@@ -45,9 +45,17 @@ function savePerso(entries: EmojiEntry[]) {
 // ── Getters ──
 
 export function getBaseEmojis(): EmojiEntry[] {
-  const base = DEFAULT_EMOJIS.map(e => ({ ...e, source: 'base' as const }))
-  // Fusionner les emojis ajoutes par admin
-  const admin = adminData().emojis.map(e => ({ ...e, source: 'base' as const }))
+  const data = adminData()
+  const base = DEFAULT_EMOJIS
+    .filter(e => !data.hiddenEmojis.includes(e.id))
+    .map(e => ({
+      ...e,
+      label: data.emojiOverrides[e.id]?.label ?? e.label,
+      source: 'base' as const,
+    }))
+  const admin = data.emojis
+    .filter(e => !data.hiddenEmojis.includes(e.id))
+    .map(e => ({ ...e, source: 'base' as const }))
   return [...base, ...admin]
 }
 

@@ -3,10 +3,11 @@ import { Modal } from './Modal'
 import { isAdmin } from '../stores/admin'
 import {
   adminData, saveAdminData, loadAdminData,
-  adminSetColorEffect, adminRemoveColorEffect,
+  adminSetColorEffect, adminRemoveColorEffect, adminHideColorEffect, adminUnhideColorEffect,
   adminRenameSizeEffect,
-  adminAddEmoji, adminRemoveEmoji,
-  adminSetCss,
+  adminAddEmoji, adminRemoveEmoji, adminUpdateEmoji,
+  adminToggleHideEmoji, adminIsEmojiHidden, adminRenameEmoji,
+  adminSetCss, isColorEffectDirty,
   type AdminColorEffect, type AdminEmoji,
 } from '../stores/admin-data'
 import { COLOR_EFFECTS, SIZE_EFFECTS } from '../engine/effects'
@@ -15,10 +16,8 @@ import { SIZE_ACCENTS } from '../data/accents'
 import { DEFAULT_EMOJIS } from '../data/emojis'
 import { VENETIAN_PALETTE } from '../data/colors'
 import { showToast } from './Toast'
-import { TUTORIAL_STEPS, VALID_STEP_IDS, startTutorial, resetTutorial } from '../stores/tutorial'
-import { setEditorOpen } from './TutorialEditor'
 
-type Tab = 'css' | 'colors' | 'emojis' | 'tutorial'
+type Tab = 'css' | 'colors' | 'emojis'
 
 /* ══════════════════════════════════════════
    CSS Tweaker — types & data (ex CssTweaker.tsx)
@@ -150,59 +149,77 @@ export function AdminPanel() {
     return rc.divisor ? ((raw as number) / rc.divisor).toFixed(2) : String(raw)
   }
 
-  const handleCssSaveForAll = async () => {
-    try {
-      const res = await fetch('/api/save-defaults', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cssValues()) })
-      adminSetCss(cssValues())
-      await saveAdminData()
-      if (res.ok) showToast('CSS sauvegarde pour tous !')
-      else showToast('Erreur serveur — telecharge le fichier', true)
-    } catch { showToast('Erreur de sauvegarde', true) }
-  }
-
-  const handleCssSavePerso = () => { localStorage.setItem(LOCAL_CSS_KEY, JSON.stringify(cssValues())); showToast('Preferences perso sauvegardees') }
-
   const handleCssReset = () => { const d = projectDefaults(); setCssValues({ ...d }); applyAllVars(d); localStorage.removeItem(LOCAL_CSS_KEY); showToast('Reinitialise') }
 
   // ── Color effect editing ──
   const [editingId, setEditingId] = createSignal<string | null>(null)
   const [editName, setEditName] = createSignal('')
   const [editColors, setEditColors] = createSignal<string[]>([])
-  const [newName, setNewName] = createSignal('')
-  const [newColors, setNewColors] = createSignal<string[]>([])
+  const [addingEffect, setAddingEffect] = createSignal(false)
 
   const allColorEffects = () => {
+    const hidden = new Set(adminData().hiddenColorEffects)
     const base = Object.entries(COLOR_EFFECTS).map(([id, e]) => ({
       id, name: adminData().colorEffects[id]?.name ?? e.name,
       colors: adminData().colorEffects[id]?.colors ?? e.colors,
-      isOverride: !!adminData().colorEffects[id], isCustom: false,
+      isDirty: isColorEffectDirty(id), isCustom: false, isHidden: hidden.has(id),
     }))
     const customIds = Object.keys(adminData().colorEffects).filter(id => !COLOR_EFFECTS[id])
     const custom = customIds.map(id => ({
       id, name: adminData().colorEffects[id].name,
       colors: adminData().colorEffects[id].colors,
-      isOverride: false, isCustom: true,
+      isDirty: isColorEffectDirty(id), isCustom: true, isHidden: hidden.has(id),
     }))
     return [...base, ...custom]
   }
 
-  const startEdit = (id: string, name: string, colors: string[]) => { setEditingId(id); setEditName(name); setEditColors([...colors]) }
-  const confirmEdit = () => { const id = editingId(); if (!id) return; adminSetColorEffect(id, { name: editName(), colors: editColors() }); setEditingId(null) }
+  const deleteEffect = (id: string, isCustom: boolean) => {
+    if (isCustom) {
+      adminRemoveColorEffect(id)
+    } else {
+      adminHideColorEffect(id)
+    }
+  }
 
-  const addNewEffect = () => {
-    const name = newName().trim()
-    if (!name || newColors().length === 0) return
-    adminSetColorEffect(`admin-${Date.now()}`, { name, colors: newColors() })
-    setNewName(''); setNewColors([])
+  const startEdit = (id: string, name: string, colors: string[]) => {
+    setEditingId(id); setEditName(name); setEditColors([...colors])
+  }
+  const confirmEdit = () => {
+    const id = editingId()
+    if (!id) return
+    adminSetColorEffect(id, { name: editName(), colors: editColors() })
+    setEditingId(null)
+  }
+
+  const startAddEffect = () => {
+    setAddingEffect(true); setEditName(''); setEditColors([])
+  }
+  const confirmAddEffect = () => {
+    const name = editName().trim()
+    if (!name || editColors().length === 0) return
+    adminSetColorEffect(`admin-${Date.now()}`, { name, colors: editColors() })
+    setAddingEffect(false)
   }
 
   // ── Emojis ──
   const [newEmoji, setNewEmoji] = createSignal('')
   const [newEmojiLabel, setNewEmojiLabel] = createSignal('')
+  const [editingEmojiId, setEditingEmojiId] = createSignal<string | null>(null)
+  const [editEmojiLabel, setEditEmojiLabel] = createSignal('')
 
   const allEmojis = () => {
-    const base = DEFAULT_EMOJIS.map(e => ({ ...e, source: 'base' as const }))
-    const admin = adminData().emojis.map(e => ({ ...e, source: 'admin' as const }))
+    const data = adminData()
+    const base = DEFAULT_EMOJIS.map(e => ({
+      ...e,
+      label: data.emojiOverrides[e.id]?.label ?? e.label,
+      source: 'base' as const,
+      hidden: data.hiddenEmojis.includes(e.id),
+    }))
+    const admin = data.emojis.map(e => ({
+      ...e,
+      source: 'admin' as const,
+      hidden: data.hiddenEmojis.includes(e.id),
+    }))
     return [...base, ...admin]
   }
 
@@ -213,12 +230,38 @@ export function AdminPanel() {
     setNewEmoji(''); setNewEmojiLabel('')
   }
 
+  const startEmojiEdit = (id: string, label: string) => {
+    setEditingEmojiId(id)
+    setEditEmojiLabel(label)
+  }
+
+  const confirmEmojiEdit = () => {
+    const id = editingEmojiId()
+    if (!id) return
+    const label = editEmojiLabel().trim()
+    // Base emoji → override, admin emoji → update
+    const isBase = DEFAULT_EMOJIS.some(e => e.id === id)
+    if (isBase) {
+      const original = DEFAULT_EMOJIS.find(e => e.id === id)!
+      adminRenameEmoji(id, label === original.label ? '' : label)
+    } else {
+      adminUpdateEmoji(id, { label })
+    }
+    setEditingEmojiId(null)
+  }
+
   // ── Global save ──
   const handleSave = async () => {
     setSaving(true)
+    // Sync CSS tweaker → adminData avant de sauver
+    adminSetCss(cssValues())
+    // Sauver aussi les CSS defaults
+    try {
+      await fetch('/api/save-defaults', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cssValues()) })
+    } catch {}
     const ok = await saveAdminData()
     setSaving(false)
-    if (ok) { showToast('Donnees admin sauvegardees !'); await loadAdminData() }
+    if (ok) showToast('Donnees admin sauvegardees !')
     else showToast('Erreur de sauvegarde', true)
   }
 
@@ -234,7 +277,6 @@ export function AdminPanel() {
           <button class={`catalog-tab ${tab() === 'colors' ? 'active' : ''}`} onClick={() => setTab('colors')}>Effets</button>
           <button class={`catalog-tab ${tab() === 'emojis' ? 'active' : ''}`} onClick={() => setTab('emojis')}>Emojis</button>
           <button class={`catalog-tab ${tab() === 'css' ? 'active' : ''}`} onClick={() => setTab('css')}>Interface CSS</button>
-          <button class={`catalog-tab ${tab() === 'tutorial' ? 'active' : ''}`} onClick={() => setTab('tutorial')}>Tutoriel</button>
         </div>
 
         <div class="admin-body">
@@ -243,21 +285,24 @@ export function AdminPanel() {
             <div class="admin-section">
               <For each={allColorEffects()}>
                 {(effect) => (
-                  <div class={`admin-effect-row ${effect.isCustom ? 'admin-custom' : ''}`}>
+                  <div class={`admin-effect-row ${effect.isCustom ? 'admin-custom' : ''} ${effect.isHidden ? 'admin-effect-hidden' : ''}`}>
                     <Show when={editingId() === effect.id} fallback={
                       <>
                         <span class="admin-effect-name">
                           {effect.name}
-                          <Show when={effect.isOverride}><span class="admin-modified-badge">modifie</span></Show>
+                          <Show when={effect.isDirty}><span class="admin-modified-badge">non sauve</span></Show>
                           <Show when={effect.isCustom}><span class="admin-custom-badge">admin</span></Show>
                         </span>
                         <div class="admin-color-preview">
                           <For each={effect.colors}>{(c) => <span class="admin-color-dot" style={{ background: c }} />}</For>
                         </div>
                         <div class="admin-effect-actions">
-                          <button class="btn tuto-btn" onClick={() => startEdit(effect.id, effect.name, effect.colors)}>Modifier</button>
-                          <Show when={effect.isCustom || effect.isOverride}>
-                            <button class="tuto-skip" onClick={() => adminRemoveColorEffect(effect.id)}>{effect.isCustom ? 'Supprimer' : 'Reset'}</button>
+                          <Show when={!effect.isHidden}>
+                            <button class="btn admin-btn" onClick={() => startEdit(effect.id, effect.name, effect.colors)}>Modifier</button>
+                            <button class="admin-btn-danger" onClick={() => deleteEffect(effect.id, effect.isCustom)}>Supprimer</button>
+                          </Show>
+                          <Show when={effect.isHidden}>
+                            <button class="btn admin-btn" onClick={() => adminUnhideColorEffect(effect.id)}>Restaurer</button>
                           </Show>
                         </div>
                       </>
@@ -272,28 +317,37 @@ export function AdminPanel() {
                           <For each={VENETIAN_PALETTE}>{(c) => <span class="admin-color-dot" style={{ background: c.hex }} onClick={() => setEditColors(prev => [...prev, c.hex])} title={c.name} />}</For>
                         </div>
                         <div class="admin-edit-actions">
-                          <button class="btn btn-lavender tuto-btn" onClick={confirmEdit}>OK</button>
-                          <button class="btn tuto-btn" onClick={() => setEditingId(null)}>Annuler</button>
+                          <button class="btn btn-lavender admin-btn" onClick={confirmEdit}>OK</button>
+                          <button class="btn admin-btn" onClick={() => setEditingId(null)}>Annuler</button>
                         </div>
                       </div>
                     </Show>
                   </div>
                 )}
               </For>
-              <div class="admin-new-section">
-                <span class="admin-section-label">Ajouter un effet couleur</span>
-                <div class="admin-edit-form">
-                  <input class="naming-input" value={newName()} onInput={(e) => setNewName(e.currentTarget.value)} placeholder="Nom du nouvel effet" />
-                  <div class="admin-edit-colors">
-                    <For each={newColors()}>{(c, i) => <span class="admin-color-dot admin-color-dot-edit" style={{ background: c }} onClick={() => setNewColors(prev => prev.filter((_, idx) => idx !== i()))} />}</For>
-                    <div class="admin-add-color-wrap"><input type="color" value="#c42b45" onChange={(e) => setNewColors(prev => [...prev, e.currentTarget.value])} /></div>
+
+              {/* Ajouter un effet — inline, même UI que l'édition */}
+              <Show when={!addingEffect()}>
+                <button class="admin-add-effect-btn" onClick={startAddEffect}>+ Ajouter un effet couleur</button>
+              </Show>
+              <Show when={addingEffect()}>
+                <div class="admin-effect-row admin-custom">
+                  <div class="admin-edit-form">
+                      <input class="naming-input" value={editName()} onInput={(e) => setEditName(e.currentTarget.value)} placeholder="Nom de l'effet" autofocus />
+                    <div class="admin-edit-colors">
+                      <For each={editColors()}>{(c, i) => <span class="admin-color-dot admin-color-dot-edit" style={{ background: c }} onClick={() => setEditColors(prev => prev.filter((_, idx) => idx !== i()))} title="Retirer" />}</For>
+                      <div class="admin-add-color-wrap"><input type="color" value="#c42b45" onChange={(e) => setEditColors(prev => [...prev, e.currentTarget.value])} /></div>
+                    </div>
+                    <div class="admin-palette-quick">
+                      <For each={VENETIAN_PALETTE}>{(c) => <span class="admin-color-dot" style={{ background: c.hex }} onClick={() => setEditColors(prev => [...prev, c.hex])} title={c.name} />}</For>
+                    </div>
+                    <div class="admin-edit-actions">
+                      <button class="btn btn-lavender admin-btn" onClick={confirmAddEffect} disabled={!editName().trim() || editColors().length === 0}>Ajouter</button>
+                      <button class="btn admin-btn" onClick={() => setAddingEffect(false)}>Annuler</button>
+                    </div>
                   </div>
-                  <div class="admin-palette-quick">
-                    <For each={VENETIAN_PALETTE}>{(c) => <span class="admin-color-dot" style={{ background: c.hex }} onClick={() => setNewColors(prev => [...prev, c.hex])} title={c.name} />}</For>
-                  </div>
-                  <button class="btn btn-lavender tuto-btn" onClick={addNewEffect} disabled={!newName().trim() || newColors().length === 0}>Ajouter</button>
                 </div>
-              </div>
+              </Show>
 
               {/* ── Effets taille ── */}
               <div class="admin-section-label" style={{ "margin-top": "20px" }}>Effets de taille</div>
@@ -316,17 +370,17 @@ export function AdminPanel() {
                             <path d={path()} fill="none" stroke={accent()} stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
                           </svg>
                           <div class="admin-effect-actions">
-                            <button class="btn tuto-btn" onClick={() => setEditing(true)}>Renommer</button>
+                            <button class="btn admin-btn" onClick={() => setEditing(true)}>Renommer</button>
                             <Show when={isRenamed()}>
-                              <button class="tuto-skip" onClick={() => { adminRenameSizeEffect(id, ''); setName(effect.name) }}>Reset</button>
+                              <button class="admin-btn-danger" onClick={() => { adminRenameSizeEffect(id, ''); setName(effect.name) }}>Reset</button>
                             </Show>
                           </div>
                         </>
                       }>
                         <div class="admin-edit-form" style={{ "flex-direction": "row", "align-items": "center", gap: "8px" }}>
                           <input class="naming-input" value={name()} onInput={(e) => setName(e.currentTarget.value)} style={{ flex: "1" }} />
-                          <button class="btn btn-lavender tuto-btn" onClick={() => { adminRenameSizeEffect(id, name()); setEditing(false) }}>OK</button>
-                          <button class="btn tuto-btn" onClick={() => { setName(adminData().sizeEffectNames[id] ?? effect.name); setEditing(false) }}>Annuler</button>
+                          <button class="btn btn-lavender admin-btn" onClick={() => { adminRenameSizeEffect(id, name()); setEditing(false) }}>OK</button>
+                          <button class="btn admin-btn" onClick={() => { setName(adminData().sizeEffectNames[id] ?? effect.name); setEditing(false) }}>Annuler</button>
                         </div>
                       </Show>
                     </div>
@@ -339,51 +393,74 @@ export function AdminPanel() {
           {/* ── Emojis ── */}
           <Show when={tab() === 'emojis'}>
             <div class="admin-section">
-              <div class="admin-emoji-grid">
+              <div class="admin-emoji-list">
                 <For each={allEmojis()}>
                   {(entry) => (
-                    <div class="admin-emoji-item">
-                      <span class="admin-emoji-char">{entry.emoji}</span>
-                      <span class="admin-emoji-label">{entry.label}</span>
-                      <Show when={entry.source === 'admin'}>
-                        <button class="admin-emoji-remove" onClick={() => adminRemoveEmoji(entry.id)}>x</button>
+                    <div class={`admin-emoji-row ${entry.hidden ? 'admin-emoji-hidden' : ''}`}>
+                      <Show when={editingEmojiId() === entry.id} fallback={
+                        <>
+                          <span class="admin-emoji-char">{entry.emoji}</span>
+                          <span class="admin-emoji-label">
+                            {entry.label}
+                            <Show when={entry.source === 'admin'}><span class="admin-custom-badge">admin</span></Show>
+                            <Show when={entry.source === 'base' && !!adminData().emojiOverrides[entry.id]}><span class="admin-modified-badge">renomme</span></Show>
+                          </span>
+                          <div class="admin-emoji-actions">
+                            <button
+                              class="admin-emoji-action-btn"
+                              onClick={() => startEmojiEdit(entry.id, entry.label)}
+                              title="Renommer"
+                            >✏️</button>
+                            <button
+                              class={`admin-emoji-action-btn ${entry.hidden ? 'admin-emoji-show-btn' : ''}`}
+                              onClick={() => adminToggleHideEmoji(entry.id)}
+                              title={entry.hidden ? 'Afficher' : 'Masquer'}
+                            >{entry.hidden ? '👁️' : '👁️‍🗨️'}</button>
+                            <Show when={entry.source === 'admin'}>
+                              <button
+                                class="admin-emoji-action-btn admin-emoji-delete-btn"
+                                onClick={() => adminRemoveEmoji(entry.id)}
+                                title="Supprimer"
+                              >✕</button>
+                            </Show>
+                            <Show when={entry.source === 'base' && !!adminData().emojiOverrides[entry.id]}>
+                              <button
+                                class="admin-emoji-action-btn"
+                                onClick={() => adminRenameEmoji(entry.id, '')}
+                                title="Reset nom"
+                              >↩</button>
+                            </Show>
+                          </div>
+                        </>
+                      }>
+                        <span class="admin-emoji-char">{entry.emoji}</span>
+                        <div class="admin-emoji-edit-form">
+                          <input
+                            class="naming-input"
+                            value={editEmojiLabel()}
+                            onInput={(e) => setEditEmojiLabel(e.currentTarget.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') confirmEmojiEdit(); if (e.key === 'Escape') setEditingEmojiId(null) }}
+                            placeholder="Nom"
+                            autofocus
+                          />
+                          <button class="btn btn-lavender admin-emoji-action-btn" onClick={confirmEmojiEdit}>OK</button>
+                          <button class="btn admin-emoji-action-btn" onClick={() => setEditingEmojiId(null)}>Annuler</button>
+                        </div>
                       </Show>
                     </div>
                   )}
                 </For>
               </div>
               <div class="admin-new-section">
-                <span class="admin-section-label">Ajouter un emoji par defaut</span>
+                <span class="admin-section-label">Ajouter un emoji</span>
                 <div class="admin-emoji-add-row">
-                  <input class="naming-input" value={newEmoji()} onInput={(e) => setNewEmoji(e.currentTarget.value)} placeholder="Emoji..." style={{ width: '80px' }} />
-                  <input class="naming-input" value={newEmojiLabel()} onInput={(e) => setNewEmojiLabel(e.currentTarget.value)} placeholder="Label" style={{ flex: '1' }} />
-                  <button class="btn btn-lavender tuto-btn" onClick={addAdminEmoji} disabled={!newEmoji().trim()}>Ajouter</button>
+                  <input class="naming-input" value={newEmoji()} onInput={(e) => setNewEmoji(e.currentTarget.value)} placeholder="😀" style={{ width: '64px', "font-size": '1.4rem', "text-align": 'center' }} />
+                  <input class="naming-input" value={newEmojiLabel()} onInput={(e) => setNewEmojiLabel(e.currentTarget.value)} placeholder="Label" style={{ flex: '1' }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') addAdminEmoji() }}
+                  />
+                  <button class="btn btn-lavender admin-btn" onClick={addAdminEmoji} disabled={!newEmoji().trim()}>Ajouter</button>
                 </div>
-              </div>
-            </div>
-          </Show>
-
-          {/* ── Tutoriel ── */}
-          <Show when={tab() === 'tutorial'}>
-            <div class="admin-section" style={{ display: 'flex', "flex-direction": 'column', gap: '16px' }}>
-              <div class="admin-section-label">Gestion du tutoriel</div>
-              <p style={{ "font-family": "'Fredoka', sans-serif", "font-size": 'var(--font-md)', color: 'var(--soft-black)', "line-height": '1.5' }}>
-                {TUTORIAL_STEPS.length} steps · {Object.keys(adminData().tutorialPositions).length} positions · {Object.keys(adminData().tutorialTexts).length} textes · {Object.keys(adminData().tutorialActions).length} actions
-                {(() => {
-                  const orphans = Object.keys(adminData().tutorialPositions).filter(id => !VALID_STEP_IDS.has(id)).length
-                  return orphans > 0 ? ` · ${orphans} orpheline${orphans > 1 ? 's' : ''}` : ''
-                })()}
-              </p>
-              <div style={{ display: 'flex', gap: '8px', "flex-wrap": 'wrap' }}>
-                <button class="btn btn-lavender" style={{ "font-size": 'var(--font-sm)', padding: '6px 14px' }} onClick={() => { setOpen(false); setEditorOpen(true) }}>
-                  Ouvrir l'editeur tutoriel
-                </button>
-                <button class="btn" style={{ "font-size": 'var(--font-sm)', padding: '6px 14px' }} onClick={() => { setOpen(false); startTutorial() }}>
-                  Lancer tutoriel (user)
-                </button>
-                <button class="btn" style={{ "font-size": 'var(--font-sm)', padding: '6px 14px' }} onClick={() => { resetTutorial(); showToast('Tutoriel reinitialise — rechargez pour voir le WelcomeModal') }}>
-                  Reset completion
-                </button>
+                <span class="admin-emoji-hint">Collez un emoji dans le champ ou utilisez le clavier emoji de votre appareil</span>
               </div>
             </div>
           </Show>
@@ -391,9 +468,7 @@ export function AdminPanel() {
           {/* ── Interface CSS ── */}
           <Show when={tab() === 'css'}>
             <div class="admin-css-actions">
-              <button class="btn" style={{ "font-size": "var(--font-sm)", padding: "4px 12px", background: "var(--mint)" }} onClick={handleCssSaveForAll}>Appliquer pour tous</button>
-              <button class="btn" style={{ "font-size": "var(--font-sm)", padding: "4px 12px", background: "var(--lavender)" }} onClick={handleCssSavePerso}>Sauver perso</button>
-              <button class="btn" style={{ "font-size": "var(--font-sm)", padding: "4px 12px" }} onClick={handleCssReset}>Reinitialiser</button>
+              <button class="btn admin-btn" onClick={handleCssReset}>Reinitialiser les CSS</button>
             </div>
             <div class="tweaker-categories">
               <For each={CSS_CATEGORIES}>

@@ -6,9 +6,6 @@ import { SidePanel } from './components/SidePanel'
 import { ToolbarPanel } from './components/ToolbarPanel'
 import { Editor } from './components/Editor'
 import { Toast, showToast } from './components/Toast'
-import { TutorialOverlay } from './components/TutorialOverlay'
-import { TutorialEditor } from './components/TutorialEditor'
-import { WelcomeModal } from './components/WelcomeModal'
 import { AdminPanel } from './components/AdminPanel'
 import './styles/app.css'
 
@@ -52,9 +49,6 @@ export default function App() {
         <SidePanel side="right" />
       </div>
       <Toast />
-      <TutorialOverlay />
-      <TutorialEditor />
-      <WelcomeModal />
       <AdminPanel />
     </>
   )

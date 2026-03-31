@@ -34,4 +34,15 @@ export const DEFAULT_EMOJIS: EmojiDef[] = [
   { id: 'wave', emoji: '👋', label: 'Salut' },
   { id: 'clap', emoji: '👏', label: 'Bravo' },
   { id: 'point', emoji: '👉', label: 'Pointer' },
+  // Mines assos
+  { id: 'cheese', emoji: '🧀', label: 'Fromage' },
+  { id: 'mountain', emoji: '🏔️', label: 'Montagne' },
+  { id: 'yarn', emoji: '🧶', label: 'Pelote' },
+  { id: 'herb', emoji: '🌿', label: 'Herbe' },
+  { id: 'leaf', emoji: '🍃', label: 'Feuille' },
+  { id: 'tree', emoji: '🌳', label: 'Arbre' },
+  { id: 'cowboy', emoji: '🤠', label: 'Cowboy' },
+  { id: 'fairy', emoji: '🧚', label: 'Fee' },
+  { id: 'pin', emoji: '📌', label: 'Epingle' },
+  { id: 'pita', emoji: '🫓', label: 'Pita' },
 ]

@@ -1,5 +1,7 @@
 import { onMount, onCleanup, createSignal } from 'solid-js'
-import { pushUndo, undo, pushRedo, redo, activeColorEffect, activeSizeEffect, baseSize, sizeAmplitude } from '../stores/editor'
+import { activeColorEffect, activeSizeEffect, baseSize, sizeAmplitude } from '../stores/editor'
+import { initUndoSystem, recordOperation, recordTypingChar, flushTyping, performUndo, performRedo } from '../stores/undo-redo'
+import { activeWord, setActiveWord } from '../stores/word-inspect'
 import { COLOR_EFFECTS, SIZE_EFFECTS } from '../engine/effects'
 import { getBuffer } from './Header'
 
@@ -45,9 +47,9 @@ export function getSelectedText(): string {
   return ''
 }
 
-export function replaceSelectionWithHtml(html: string) {
+/** Version interne — pas de record undo (l'appelant s'en charge) */
+function _replaceHtml(html: string) {
   if (!editorEl) return
-  pushUndo(editorEl.innerHTML)
   const sel = window.getSelection()
   if (!sel || sel.rangeCount === 0) { if (!restoreSelection()) return }
   const currentSel = window.getSelection()
@@ -72,18 +74,27 @@ export function replaceSelectionWithHtml(html: string) {
   editorEl.focus()
 }
 
+export function replaceSelectionWithHtml(html: string, label = 'Insérer') {
+  if (!editorEl) return
+  const op = recordOperation(label, 'insert')
+  _replaceHtml(html)
+  op.commit()
+}
+
 export function applyInlineStyle(prop: string, value: string) {
   if (!editorEl) return
   restoreSelection()
   const sel = window.getSelection()
   if (!sel || sel.rangeCount === 0) { editorEl.focus(); return }
-  pushUndo(editorEl.innerHTML)
+  const labels: Record<string, string> = { color: `Couleur : ${value}`, backgroundColor: `Fond : ${value}`, fontSize: `Taille : ${value}`, fontFamily: `Police : ${value.split(',')[0]}` }
+  const op = recordOperation(labels[prop] || `Style : ${prop}`, 'format')
   if (prop === 'color') document.execCommand('foreColor', false, value)
   else if (prop === 'backgroundColor') document.execCommand('hiliteColor', false, value)
   else if (prop === 'fontSize') {
     document.execCommand('fontSize', false, '7')
     editorEl.querySelectorAll('font[size="7"]').forEach(el => { (el as HTMLElement).removeAttribute('size'); (el as HTMLElement).style.fontSize = value })
   } else if (prop === 'fontFamily') document.execCommand('fontName', false, value)
+  op.commit()
   editorEl.focus()
   saveSelection()
 }
@@ -97,7 +108,8 @@ export function applyLink(url: string) {
   restoreSelection()
   const sel = window.getSelection()
   if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return
-  pushUndo(editorEl.innerHTML)
+  const short = url.replace(/^https?:\/\//, '').slice(0, 30)
+  const op = recordOperation(`Lien : ${short}`, 'link')
 
   const range = sel.getRangeAt(0)
   const contents = range.extractContents()
@@ -105,7 +117,6 @@ export function applyLink(url: string) {
   const a = document.createElement('a')
   a.href = url
   a.target = '_blank'
-  // Inherit tout le style du texte — pas de changement visuel
   a.style.color = 'inherit'
   a.style.textDecoration = 'inherit'
   a.appendChild(contents)
@@ -117,6 +128,7 @@ export function applyLink(url: string) {
   newRange.collapse(true)
   sel.removeAllRanges()
   sel.addRange(newRange)
+  op.commit()
   editorEl.focus()
   saveSelection()
 }
@@ -130,20 +142,22 @@ export function removeLink() {
   const node = sel.anchorNode
   const a = node?.parentElement?.closest('a') || (node as Element)?.closest?.('a')
   if (!a || !editorEl.contains(a)) return
-  pushUndo(editorEl.innerHTML)
+  const op = recordOperation('Retirer lien', 'link')
 
-  // Remplacer le <a> par son contenu
   const parent = a.parentNode!
   while (a.firstChild) parent.insertBefore(a.firstChild, a)
   a.remove()
+  op.commit()
   editorEl.focus()
 }
 
 export function execFormatCommand(cmd: string) {
   if (!editorEl) return
   restoreSelection()
-  pushUndo(editorEl.innerHTML)
+  const labels: Record<string, string> = { bold: 'Gras', italic: 'Italique', underline: 'Souligné', strikeThrough: 'Barré' }
+  const op = recordOperation(labels[cmd] || cmd, 'format')
   document.execCommand(cmd, false, undefined)
+  op.commit()
   editorEl.focus()
   saveSelection()
 }
@@ -152,7 +166,7 @@ export function execFormatCommand(cmd: string) {
  * Applique un cycle de couleurs sur la selection en preservant le formatage existant.
  * Chaque caractere non-espace recoit sa couleur dans l'ordre du cycle.
  */
-export function applyColorToSelection(colors: string[]) {
+export function applyColorToSelection(colors: string[], mode: 'text' | 'bg' = 'text', effectLabel?: string) {
   if (!editorEl || colors.length === 0) return
   restoreSelection()
   const sel = window.getSelection()
@@ -160,7 +174,8 @@ export function applyColorToSelection(colors: string[]) {
   const range = sel.getRangeAt(0)
   if (range.collapsed || !editorEl.contains(range.commonAncestorContainer)) return
 
-  pushUndo(editorEl.innerHTML)
+  const label = effectLabel || (mode === 'bg' ? 'Fond couleur' : 'Couleur')
+  const op = recordOperation(label, 'effect')
 
   // Extraire le contenu selectionne (preserve <b>, <i>, <u>, <font>, etc.)
   const fragment = range.extractContents()
@@ -173,13 +188,32 @@ export function applyColorToSelection(colors: string[]) {
   let charIdx = 0
   for (const textNode of textNodes) {
     const text = textNode.textContent || ''
+    const parent = textNode.parentElement
+
+    // Span single-char existant → modifier directement
+    if (parent && parent.tagName === 'SPAN' && parent !== fragment as unknown as Element
+        && parent.childNodes.length === 1 && text.length === 1 && text.trim().length === 1) {
+      if (mode === 'bg') {
+        parent.style.backgroundColor = colors[charIdx % colors.length]
+      } else {
+        parent.style.color = colors[charIdx % colors.length]
+      }
+      charIdx++
+      continue
+    }
+
+    // Cas général
     const charFrag = document.createDocumentFragment()
     for (const char of text) {
       if (char === ' ' || char === '\n' || char === '\t') {
         charFrag.appendChild(document.createTextNode(char))
       } else {
         const span = document.createElement('span')
-        span.style.color = colors[charIdx % colors.length]
+        if (mode === 'bg') {
+          span.style.backgroundColor = colors[charIdx % colors.length]
+        } else {
+          span.style.color = colors[charIdx % colors.length]
+        }
         span.textContent = char
         charFrag.appendChild(span)
         charIdx++
@@ -190,6 +224,7 @@ export function applyColorToSelection(colors: string[]) {
 
   // Reinjecter le fragment modifie
   range.insertNode(fragment)
+  op.commit()
   editorEl.focus()
   saveSelection()
 }
@@ -198,7 +233,7 @@ export function applyColorToSelection(colors: string[]) {
  * Applique un effet de taille sur la selection en preservant le formatage existant.
  * Chaque caractere non-espace recoit sa taille selon getOffset().
  */
-export function applySizeToSelection(getOffset: (charIdx: number, total: number) => number, baseSize: number) {
+export function applySizeToSelection(getOffset: (charIdx: number, total: number) => number, baseSize: number, effectLabel?: string) {
   if (!editorEl) return
   restoreSelection()
   const sel = window.getSelection()
@@ -206,7 +241,7 @@ export function applySizeToSelection(getOffset: (charIdx: number, total: number)
   const range = sel.getRangeAt(0)
   if (range.collapsed || !editorEl.contains(range.commonAncestorContainer)) return
 
-  pushUndo(editorEl.innerHTML)
+  const op = recordOperation(effectLabel || 'Taille', 'effect')
 
   const fragment = range.extractContents()
   const walker = document.createTreeWalker(fragment, NodeFilter.SHOW_TEXT)
@@ -220,13 +255,26 @@ export function applySizeToSelection(getOffset: (charIdx: number, total: number)
   let charIdx = 0
   for (const textNode of textNodes) {
     const text = textNode.textContent || ''
+    const parent = textNode.parentElement
+
+    // Cas simple : le parent est un span avec un seul text node d'un seul char
+    // → on ajoute fontSize directement sur le span parent, pas besoin de recréer
+    if (parent && parent.tagName === 'SPAN' && parent !== fragment as unknown as Element
+        && parent.childNodes.length === 1 && text.length === 1 && text.trim().length === 1) {
+      const offset = getOffset(charIdx, total)
+      parent.style.fontSize = `${Math.max(8, Math.round(baseSize + offset))}px`
+      charIdx++
+      continue
+    }
+
+    // Cas général : texte brut ou multi-char, on split en spans individuels
     const charFrag = document.createDocumentFragment()
     for (const char of text) {
       if (char === ' ' || char === '\n' || char === '\t') {
         charFrag.appendChild(document.createTextNode(char))
       } else {
-        const span = document.createElement('span')
         const offset = getOffset(charIdx, total)
+        const span = document.createElement('span')
         span.style.fontSize = `${Math.max(8, Math.round(baseSize + offset))}px`
         span.textContent = char
         charFrag.appendChild(span)
@@ -237,6 +285,7 @@ export function applySizeToSelection(getOffset: (charIdx: number, total: number)
   }
 
   range.insertNode(fragment)
+  op.commit()
   editorEl.focus()
   saveSelection()
 }
@@ -245,6 +294,121 @@ export function applySizeToSelection(getOffset: (charIdx: number, total: number)
 const COL_GAP = 24
 const EDITOR_PAD = 20
 const MAX_PAGES = 50
+
+function computeWordAtCursor() {
+  if (!editorEl) { setActiveWord(null); return }
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0) { setActiveWord(null); return }
+
+  const node = sel.focusNode
+  if (!node || !editorEl.contains(node)) { setActiveWord(null); return }
+
+  // Trouver l'élément le plus proche
+  const el = node.nodeType === Node.ELEMENT_NODE ? node as HTMLElement
+    : node.parentElement
+  if (!el || el === editorEl) { setActiveWord(null); return }
+
+  const spans = getWordSpans(el, editorEl)
+  if (spans.length === 0) { setActiveWord(null); return }
+
+  const first = spans[0]
+  const cs = window.getComputedStyle(first)
+  // Vérifier le lien depuis l'élément sous le curseur, pas depuis le groupe de spans
+  const linkEl = el.closest('a') as HTMLAnchorElement | null
+  const bgRaw = cs.backgroundColor
+  const hasBg = bgRaw && bgRaw !== 'rgba(0, 0, 0, 0)' && bgRaw !== 'transparent'
+
+  const wordData = {
+    word: spans.map(s => s.textContent || '').join(''),
+    color: cs.color,
+    bg: hasBg ? bgRaw : '',
+    size: cs.fontSize,
+    font: cs.fontFamily.split(',')[0].replace(/"/g, '').trim(),
+    bold: parseInt(cs.fontWeight) >= 700,
+    italic: cs.fontStyle === 'italic',
+    underline: cs.textDecorationLine.includes('underline'),
+    strike: cs.textDecorationLine.includes('line-through'),
+    link: linkEl?.getAttribute('href') || null,
+    linkEl,
+    spans,
+  }
+  setActiveWord(wordData)
+}
+
+/** Applique un style inline à tous les spans du mot actif */
+export function applyStyleToActiveWord(prop: string, value: string) {
+  const w = activeWord()
+  if (!w || !editorEl) return
+  const op = recordOperation(`Style mot : ${prop}`, 'style')
+  for (const span of w.spans) {
+    (span as HTMLElement).style[prop as any] = value
+  }
+  op.commit()
+  computeWordAtCursor()
+}
+
+/** Ajoute/modifie/supprime le lien du mot actif */
+export function setActiveWordLink(url: string | null) {
+  const w = activeWord()
+  if (!w || !editorEl) return
+  const op = recordOperation(url ? `Lien : ${url.replace(/^https?:\/\//, '').slice(0, 25)}` : 'Retirer lien', 'link')
+
+  if (url) {
+    if (w.linkEl) {
+      w.linkEl.href = url
+    } else {
+      const a = document.createElement('a')
+      a.href = url
+      a.target = '_blank'
+      a.style.color = 'inherit'
+      a.style.textDecoration = 'inherit'
+      const parent = w.spans[0].parentNode!
+      parent.insertBefore(a, w.spans[0])
+      for (const s of w.spans) a.appendChild(s)
+    }
+  } else if (w.linkEl) {
+    const parent = w.linkEl.parentNode!
+    while (w.linkEl.firstChild) parent.insertBefore(w.linkEl.firstChild, w.linkEl)
+    w.linkEl.remove()
+  }
+  op.commit()
+  computeWordAtCursor()
+}
+
+/** Extrait le "mot" (group de spans adjacents non-espace) sous un element */
+function getWordSpans(target: HTMLElement, editor: HTMLElement): HTMLElement[] {
+  // Remonter au span direct enfant de l'éditeur ou au span le plus proche
+  let span: HTMLElement | null = target
+  while (span && span.parentElement !== editor && span.parentElement) {
+    span = span.parentElement
+  }
+  if (!span || span === editor) return [target]
+
+  // Collecter les spans adjacents (même mot = pas de whitespace-only entre eux)
+  const spans: HTMLElement[] = [span]
+
+  // Vers la gauche
+  let prev = span.previousSibling
+  while (prev) {
+    if (prev.nodeType === Node.TEXT_NODE && prev.textContent?.trim() === '') break
+    if (prev.nodeType === Node.TEXT_NODE && (prev.textContent === ' ' || prev.textContent === '\n')) break
+    if (prev.nodeType === Node.ELEMENT_NODE) spans.unshift(prev as HTMLElement)
+    else break
+    prev = prev.previousSibling
+  }
+
+  // Vers la droite
+  let next = span.nextSibling
+  while (next) {
+    if (next.nodeType === Node.TEXT_NODE && next.textContent?.trim() === '') break
+    if (next.nodeType === Node.TEXT_NODE && (next.textContent === ' ' || next.textContent === '\n')) break
+    if (next.nodeType === Node.ELEMENT_NODE) spans.push(next as HTMLElement)
+    else break
+    next = next.nextSibling
+  }
+
+  return spans
+}
 
 export function Editor() {
   const [pageLabel, setPageLabel] = createSignal('1 – 3')
@@ -353,12 +517,12 @@ export function Editor() {
     cancelAnimationFrame(checkTimer)
     checkTimer = requestAnimationFrame(() => {
       if (!editorEl) return
-      // Force browser to complete CSS column reflow before reading position
       void editorEl.offsetHeight
       const cp = getCursorPage()
       if (cp < ws || cp >= ws + 3) {
         slideTo(getWindowForPage(cp))
       }
+      computeWordAtCursor()
     })
   }
 
@@ -384,13 +548,21 @@ export function Editor() {
   }
 
   onMount(() => {
+    if (editorEl) initUndoSystem(editorEl)
+
     document.addEventListener('mousedown', (e) => {
       if (editorEl && !editorEl.contains(e.target as Node)) saveSelection()
     })
     document.addEventListener('keydown', (e) => {
       if (!editorEl) return
-      if (e.ctrlKey && e.key === 'z') { e.preventDefault(); const prev = undo(); if (prev !== null) { pushRedo(editorEl.innerHTML); editorEl.innerHTML = prev } }
-      if (e.ctrlKey && e.key === 'y') { e.preventDefault(); const next = redo(); if (next !== null) { pushUndo(editorEl.innerHTML); editorEl.innerHTML = next } }
+      // Undo/redo uniquement si le focus est dans l'éditeur ou si aucun input n'est focus
+      const active = document.activeElement
+      const inEditor = editorEl.contains(active)
+      const inInput = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement || active instanceof HTMLSelectElement
+      if (!inEditor && inInput) return
+
+      if (e.ctrlKey && e.key === 'z') { e.preventDefault(); performUndo() }
+      if (e.ctrlKey && e.key === 'y') { e.preventDefault(); performRedo() }
     })
 
     /* Force le style de la hotbar sur chaque caractere tape.
@@ -402,6 +574,8 @@ export function Editor() {
         if (e.inputType !== 'insertText' || !e.data) return
 
         e.preventDefault()
+        // Snapshot debounce pour pouvoir undo la frappe
+        recordTypingChar(e.data)
         const buf = getBuffer()
 
         const deco: string[] = []
@@ -518,84 +692,18 @@ export function Editor() {
           const safe = ch.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
           return `<span style="${style}">${safe}</span>`
         }).join('')
-        replaceSelectionWithHtml(html)
+        replaceSelectionWithHtml(html, 'Coller')
         scheduleCheck()
       })
     }
 
-    /* ── Double-clic = peindre le mot avec hotbar + effets armes ── */
+    /* Double-clic = selection native du mot (comportement navigateur) */
+
+    /* ── Word hotbar — mise à jour au mouvement du curseur ── */
+    const wordCheck = () => requestAnimationFrame(computeWordAtCursor)
     if (editorEl) {
-      editorEl.addEventListener('dblclick', (e) => {
-        // Le double-clic natif selectionne le mot — on utilise cette selection
-        const sel = window.getSelection()
-        if (!sel || sel.isCollapsed || !sel.rangeCount) return
-        const range = sel.getRangeAt(0)
-        if (!editorEl!.contains(range.commonAncestorContainer)) return
-
-        const word = sel.toString()
-        if (!word.trim()) return
-
-        pushUndo(editorEl!.innerHTML)
-
-        const buf = getBuffer()
-        const colorId = activeColorEffect()
-        const sizeId = activeSizeEffect()
-        const colorEffect = colorId ? COLOR_EFFECTS[colorId] : null
-        const sizeEffect = sizeId ? SIZE_EFFECTS[sizeId] : null
-        const amp = sizeAmplitude()
-
-        // Extraire le contenu selectionne
-        const extracted = range.extractContents()
-        const chars = [...(extracted.textContent || '')]
-        const nonSpaceCount = chars.filter(c => c !== ' ').length
-
-        const frag = document.createDocumentFragment()
-        let charIdx = 0
-        for (const char of chars) {
-          if (char === ' ' || char === '\n') {
-            frag.appendChild(document.createTextNode(char))
-            continue
-          }
-
-          const deco: string[] = []
-          if (buf.underline) deco.push('underline')
-          if (buf.strikeThrough) deco.push('line-through')
-
-          const color = colorEffect
-            ? colorEffect.colors[charIdx % colorEffect.colors.length]
-            : buf.foreColor
-
-          let fontSize = buf.fontSize
-          if (sizeEffect) {
-            const t = nonSpaceCount <= 1 ? 0 : charIdx / (nonSpaceCount - 1)
-            fontSize = Math.max(8, Math.round(baseSize() + amp * sizeEffect.getShape(t)))
-          }
-
-          const styleParts = [
-            `color:${color}`,
-            `font-size:${fontSize}px`,
-            `font-family:${buf.fontFamily}`,
-            `font-weight:${buf.bold ? '700' : '400'}`,
-            `font-style:${buf.italic ? 'italic' : 'normal'}`,
-            `text-decoration:${deco.length ? deco.join(' ') : 'none'}`,
-          ]
-          if (buf.hiliteColor) styleParts.push(`background-color:${buf.hiliteColor}`)
-
-          const span = document.createElement('span')
-          span.setAttribute('style', styleParts.join(';'))
-          span.textContent = char
-          frag.appendChild(span)
-          charIdx++
-        }
-
-        range.insertNode(frag)
-
-        // Nettoyer les elements vides
-        editorEl!.querySelectorAll('span:empty, font:empty, b:empty, i:empty, u:empty').forEach(el => el.remove())
-
-        // Deselectionner
-        sel.removeAllRanges()
-      })
+      editorEl.addEventListener('click', wordCheck)
+      editorEl.addEventListener('keyup', wordCheck)
     }
 
     const ro = new ResizeObserver(updateLayout)
@@ -607,6 +715,10 @@ export function Editor() {
     onCleanup(() => {
       ro.disconnect()
       document.removeEventListener('selectionchange', scheduleCheck)
+      if (editorEl) {
+        editorEl.removeEventListener('click', wordCheck)
+        editorEl.removeEventListener('keyup', wordCheck)
+      }
     })
   })
 
@@ -625,6 +737,7 @@ export function Editor() {
           <span class="page-nav-label">{pageLabel()}</span>
           <button class="page-nav-btn" onClick={goForward}>▸</button>
         </div>
+
       </div>
     </div>
   )

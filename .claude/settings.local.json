@@ -33,7 +33,9 @@
       "Bash(grep -r \"tweaker-gear\\\\|tweaker-panel\\\\|tweaker-grid\" /c/Users/bloki/Desktop/Programmation/PERSO/mail-coloring/src --include=*.css --include=*.scss --include=*.tsx --include=*.ts)",
       "mcp__plugin_playwright_playwright__browser_snapshot",
       "mcp__plugin_playwright_playwright__browser_run_code",
-      "mcp__plugin_playwright_playwright__browser_press_key"
+      "mcp__plugin_playwright_playwright__browser_press_key",
+      "Bash(wc -l /c/Users/bloki/Desktop/Programmation/PERSO/mail-coloring/src/**/*.tsx /c/Users/bloki/Desktop/Programmation/PERSO/mail-coloring/src/**/*.ts)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/)"
     ]
   }
 }

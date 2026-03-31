@@ -1,10 +1,27 @@
 {
-  "colorEffects": {},
+  "colorEffects": {
+    "foret": {
+      "name": "Noise",
+      "colors": [
+        "#1b4332",
+        "#2d6a4f",
+        "#40916c",
+        "#52b788",
+        "#74c69d",
+        "#95d5b2"
+      ]
+    }
+  },
+  "hiddenColorEffects": [
+    "ecolo",
+    "bonbon",
+    "fromage",
+    "candy"
+  ],
   "sizeEffectNames": {},
   "emojis": [],
-  "tutorialPositions": {},
-  "tutorialTexts": {},
-  "tutorialActions": {},
+  "hiddenEmojis": [],
+  "emojiOverrides": {},
   "css": {
     "0": 741,
     "1": 5,
@@ -46,7 +63,7 @@
     "--shadow-y": 5,
     "--btn-size": 38,
     "--swatch-size": 28,
-    "--side-width-left": 120,
+    "--side-width-left": 220,
     "--side-width-right": 120,
     "--toolbar-pad": 6,
     "--header-pad": 8,

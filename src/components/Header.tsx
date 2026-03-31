@@ -1,8 +1,9 @@
 import { createSignal, Show } from 'solid-js'
-import { getEditorEl, getAllEditorHtml, getAllEditorText, applyInlineStyle, execFormatCommand } from './Editor'
-import { undo, pushRedo, redo, pushUndo } from '../stores/editor'
+import { getEditorEl, getAllEditorHtml, getAllEditorText, setActiveWordLink } from './Editor'
+import { activeWord } from '../stores/word-inspect'
+import { performUndo, performRedo, canUndo, canRedo, undoLabel, redoLabel } from '../stores/undo-redo'
 import { showToast } from './Toast'
-import { startTutorial } from '../stores/tutorial'
+import { HistoryPanel } from './HistoryPanel'
 
 /* ══════════════════════════════════════════
    Buffer de style — etat independant du curseur.
@@ -37,9 +38,17 @@ const DEFAULT_BUFFER: StyleBuffer = {
 // Signal global pour que la toolbar puisse mettre a jour le buffer
 const [styleBuffer, setStyleBuffer] = createSignal<StyleBuffer>({ ...DEFAULT_BUFFER })
 
+// Preview temporaire (hover dropdown, input en cours) — override la status bar sans modifier le buffer
+const [previewOverride, setPreviewOverride] = createSignal<Partial<StyleBuffer> | null>(null)
+
 /** Met a jour un champ du buffer */
 export function updateBuffer(partial: Partial<StyleBuffer>) {
   setStyleBuffer(prev => ({ ...prev, ...partial }))
+}
+
+/** Active/désactive un preview temporaire dans la status bar */
+export function setPreview(partial: Partial<StyleBuffer> | null) {
+  setPreviewOverride(partial)
 }
 
 /** Lit le buffer courant */
@@ -73,8 +82,74 @@ export function pickStyleFromElement(el: Element) {
   showToast('Style copie')
 }
 
+/** Indicateur de lien — se "fige" au clic pour ne pas disparaître pendant l'édition */
+function LinkIndicator() {
+  const [frozen, setFrozen] = createSignal<{ link: string; word: ReturnType<typeof activeWord> } | null>(null)
+  const [val, setVal] = createSignal('')
+  let ref: HTMLInputElement | undefined
+
+  const editing = () => frozen() !== null
+  const displayLink = () => frozen()?.link || activeWord()?.link || null
+
+  const startEdit = () => {
+    const w = activeWord()
+    if (!w?.link) return
+    setFrozen({ link: w.link, word: w })
+    setVal(w.link)
+    requestAnimationFrame(() => { ref?.focus(); ref?.select() })
+  }
+
+  const confirm = () => {
+    const url = val().trim()
+    setActiveWordLink(url && url !== 'https://' ? url : null)
+    setFrozen(null)
+  }
+
+  const cancel = () => setFrozen(null)
+
+  const remove = () => {
+    setActiveWordLink(null)
+    setFrozen(null)
+  }
+
+  return (
+    <Show when={editing() || activeWord()?.link}>
+      <Show when={editing()} fallback={
+        <button
+          class="link-indicator"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={startEdit}
+          title={activeWord()?.link || ''}
+        >
+          🔗 {(activeWord()?.link || '').replace(/^https?:\/\//, '').slice(0, 30)}
+        </button>
+      }>
+        <div class="link-indicator-edit" onMouseDown={(e) => e.preventDefault()}>
+          <input
+            ref={ref}
+            class="link-indicator-input"
+            type="url"
+            value={val()}
+            onInput={(e) => setVal(e.currentTarget.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') confirm(); if (e.key === 'Escape') cancel() }}
+            placeholder="https://..."
+          />
+          <button class="btn btn-lavender link-indicator-btn" onClick={confirm}>OK</button>
+          <button class="btn link-indicator-btn link-indicator-del" onClick={remove}>Retirer</button>
+        </div>
+      </Show>
+    </Show>
+  )
+}
+
 export function Header() {
-  const s = () => styleBuffer()
+  // Merge buffer + preview override pour l'affichage
+  const s = () => {
+    const base = styleBuffer()
+    const ov = previewOverride()
+    return ov ? { ...base, ...ov } : base
+  }
+  const isPreviewing = () => previewOverride() !== null
 
   const fgHex = () => rgbToHex(s().foreColor) || '#374151'
   const bgHex = () => rgbToHex(s().hiliteColor)
@@ -83,26 +158,12 @@ export function Header() {
     return !!c && c !== 'transparent' && c !== 'rgba(0, 0, 0, 0)' && c !== ''
   }
 
-  // Toggle un format dans le buffer + applique a la selection
-  const toggleFormat = (cmd: string, field: keyof StyleBuffer) => {
-    execFormatCommand(cmd)
-    setStyleBuffer(prev => ({ ...prev, [field]: !prev[field] }))
-  }
-
   const handleUndo = () => {
-    const editor = getEditorEl()
-    if (!editor) return
-    const prev = undo()
-    if (prev !== null) { pushRedo(editor.innerHTML); editor.innerHTML = prev }
-    else showToast('Rien a annuler', true)
+    if (!performUndo()) showToast('Rien à annuler', true)
   }
 
   const handleRedo = () => {
-    const editor = getEditorEl()
-    if (!editor) return
-    const next = redo()
-    if (next !== null) { pushUndo(editor.innerHTML); editor.innerHTML = next }
-    else showToast('Rien a retablir', true)
+    if (!performRedo()) showToast('Rien à rétablir', true)
   }
 
   const handleCopy = async () => {
@@ -128,14 +189,16 @@ export function Header() {
         Mail Colorer
       </span>
 
-      {/* ── Hotbar : buffer de style du prochain caractere ── */}
-      <div class="status-bar">
+      {/* ── Hotbar : aperçu du style du prochain caractère (lecture seule) ── */}
+      <div class={`status-bar ${isPreviewing() ? 'status-bar-preview' : ''}`} title="Aperçu du style appliqué au prochain caractère tapé ou double-cliqué">
+        <span class="status-hint">{isPreviewing() ? 'Aperçu :' : 'Prochain style :'}</span>
+
         {/* Preview "Aa" */}
         <span
           class="status-preview"
           style={{
             "font-family": s().fontFamily,
-            "font-size": `${Math.min(s().fontSize, 24)}px`,
+            "font-size": `${Math.min(s().fontSize, 120)}px`,
             "color": s().foreColor,
             "background-color": hasBg() ? s().hiliteColor : 'transparent',
             "font-weight": s().bold ? '700' : '400',
@@ -152,60 +215,27 @@ export function Header() {
         <div class="status-sep" />
 
         {/* Couleur texte */}
-        <div class="status-color-group">
-          <div class="status-color-wrapper">
-            <div class="status-color-swatch" style={{ background: fgHex() }} />
-            <input
-              type="color"
-              value={fgHex()}
-              onChange={(e) => {
-                const c = e.currentTarget.value
-                applyInlineStyle('color', c)
-                updateBuffer({ foreColor: c })
-              }}
-              title="Couleur du texte"
-            />
-          </div>
-          <span class="status-label">A</span>
-        </div>
-
-        {/* Couleur fond */}
-        <div class="status-color-group">
-          <div class="status-color-wrapper">
-            <div class="status-color-swatch" style={{ background: hasBg() ? bgHex() : 'var(--white)', "border-style": hasBg() ? 'solid' : 'dashed' }} />
-            <input
-              type="color"
-              value={hasBg() ? bgHex() : '#ffffff'}
-              onChange={(e) => {
-                const c = e.currentTarget.value
-                applyInlineStyle('backgroundColor', c)
-                updateBuffer({ hiliteColor: c })
-              }}
-              title="Couleur de fond"
-            />
-          </div>
-          {hasBg() && (
-            <button
-              class="status-clear-bg"
-              onClick={() => updateBuffer({ hiliteColor: '' })}
-              title="Retirer le fond"
-            >x</button>
-          )}
-        </div>
+        <div class="status-color-swatch" style={{ background: fgHex() }} title="Couleur du texte" />
+        <Show when={hasBg()}>
+          <div class="status-color-swatch" style={{ background: bgHex(), "border-style": "dashed" }} title="Couleur de fond" />
+        </Show>
 
         <div class="status-sep" />
 
-        {/* B I U S */}
-        <button class={`status-fmt ${s().bold ? 'active' : ''}`} onClick={() => toggleFormat('bold', 'bold')} title="Gras"><b>B</b></button>
-        <button class={`status-fmt ${s().italic ? 'active' : ''}`} onClick={() => toggleFormat('italic', 'italic')} title="Italique"><i>I</i></button>
-        <button class={`status-fmt ${s().underline ? 'active' : ''}`} onClick={() => toggleFormat('underline', 'underline')} title="Souligne"><u>U</u></button>
-        <button class={`status-fmt ${s().strikeThrough ? 'active' : ''}`} onClick={() => toggleFormat('strikeThrough', 'strikeThrough')} title="Barre"><s>S</s></button>
+        {/* B I U S — indicateurs lecture seule */}
+        <span class={`status-fmt-ro ${s().bold ? 'active' : ''}`}><b>B</b></span>
+        <span class={`status-fmt-ro ${s().italic ? 'active' : ''}`}><i>I</i></span>
+        <span class={`status-fmt-ro ${s().underline ? 'active' : ''}`}><u>U</u></span>
+        <span class={`status-fmt-ro ${s().strikeThrough ? 'active' : ''}`}><s>S</s></span>
       </div>
 
+      {/* ── Indicateur de lien ── */}
+      <LinkIndicator />
+
       <span class="header-spacer" />
-      <button class="btn-icon tuto-trigger" title="Lancer le tutoriel" onClick={startTutorial}>?</button>
-      <button class="btn-icon" title="Annuler (Ctrl+Z)" onClick={handleUndo}>↩</button>
-      <button class="btn-icon" title="Retablir (Ctrl+Y)" onClick={handleRedo}>↪</button>
+      <button class="btn-icon" title={undoLabel() ? `Annuler : ${undoLabel()}` : 'Annuler (Ctrl+Z)'} onClick={handleUndo} disabled={!canUndo()} style={{ opacity: canUndo() ? '1' : '0.4' }}>↩</button>
+      <button class="btn-icon" title={redoLabel() ? `Rétablir : ${redoLabel()}` : 'Rétablir (Ctrl+Y)'} onClick={handleRedo} disabled={!canRedo()} style={{ opacity: canRedo() ? '1' : '0.4' }}>↪</button>
+      <HistoryPanel />
       <button class="btn btn-peach" style={{ "margin-left": "8px" }} onClick={handleCopy}>Copier</button>
     </header>
   )

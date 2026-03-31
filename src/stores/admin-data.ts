@@ -13,51 +13,30 @@ export interface AdminEmoji {
   label: string
 }
 
-export interface TutorialTextOverride {
-  title?: string
-  description?: string
-}
-
-export type AnchorPosition = 'top' | 'bottom' | 'left' | 'right' | 'bottom-right' | 'bottom-left' | 'top-left' | 'top-right' | 'center'
-
-export interface TutorialPosition {
-  bubbleAnchor: AnchorPosition
-  bubbleOffsetX: number
-  bubbleOffsetY: number
-  spotPadding?: number
-  spotSelector?: string
-}
-
-export interface TutorialActionOverride {
-  type?: 'select-text' | 'click-element' | 'dblclick-element' | 'none'
-  targetSelector?: string
-  hint?: string
-  enabled?: boolean
-}
-
 export interface AdminData {
   colorEffects: Record<string, AdminColorEffect>
+  hiddenColorEffects: string[]
   sizeEffectNames: Record<string, string>
   emojis: AdminEmoji[]
-  tutorialPositions: Record<string, TutorialPosition>
-  tutorialTexts: Record<string, TutorialTextOverride>
-  tutorialActions: Record<string, TutorialActionOverride>
+  hiddenEmojis: string[]
+  emojiOverrides: Record<string, { label: string }>
   css: Record<string, string | number>
 }
 
 const EMPTY: AdminData = {
   colorEffects: {},
+  hiddenColorEffects: [],
   sizeEffectNames: {},
   emojis: [],
-  tutorialPositions: {},
-  tutorialTexts: {},
-  tutorialActions: {},
+  hiddenEmojis: [],
+  emojiOverrides: {},
   css: {},
 }
 
 /* ── State ── */
 
 const [adminData, setAdminData] = createSignal<AdminData>({ ...EMPTY })
+const [savedAdminData, setSavedAdminData] = createSignal<AdminData>({ ...EMPTY })
 const [loaded, setLoaded] = createSignal(false)
 
 /* ── Load from server ── */
@@ -66,9 +45,14 @@ export async function loadAdminData() {
   try {
     const res = await fetch('/admin-data.json?' + Date.now())
     const data = await res.json()
-    setAdminData({ ...EMPTY, ...data })
-  } catch {
+    console.log('[admin-data] loaded from server:', JSON.stringify(data).slice(0, 200))
+    const merged = { ...EMPTY, ...data }
+    setAdminData(merged)
+    setSavedAdminData(JSON.parse(JSON.stringify(merged)))
+  } catch (err) {
+    console.error('[admin-data] load failed:', err)
     setAdminData({ ...EMPTY })
+    setSavedAdminData({ ...EMPTY })
   }
   setLoaded(true)
 }
@@ -77,15 +61,30 @@ export async function loadAdminData() {
 
 export async function saveAdminData(): Promise<boolean> {
   try {
+    const payload = JSON.stringify(adminData())
+    console.log('[admin-data] saving:', payload.slice(0, 200))
     const res = await fetch('/api/save-admin', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(adminData()),
+      body: payload,
     })
+    console.log('[admin-data] save response:', res.status)
+    if (res.ok) {
+      setSavedAdminData(JSON.parse(JSON.stringify(adminData())))
+    }
     return res.ok
   } catch {
     return false
   }
+}
+
+/** Vérifie si un effet couleur a des changements non sauvés */
+export function isColorEffectDirty(id: string): boolean {
+  const current = adminData().colorEffects[id]
+  const saved = savedAdminData().colorEffects[id]
+  if (!current && !saved) return false
+  if (!current || !saved) return true
+  return current.name !== saved.name || JSON.stringify(current.colors) !== JSON.stringify(saved.colors)
 }
 
 /* ── Mutations — Color Effects ── */
@@ -99,6 +98,22 @@ export function adminRemoveColorEffect(id: string) {
     const { [id]: _, ...rest } = d.colorEffects
     return { ...d, colorEffects: rest }
   })
+}
+
+export function adminHideColorEffect(id: string) {
+  setAdminData(d => ({
+    ...d,
+    hiddenColorEffects: d.hiddenColorEffects.includes(id)
+      ? d.hiddenColorEffects
+      : [...d.hiddenColorEffects, id],
+  }))
+}
+
+export function adminUnhideColorEffect(id: string) {
+  setAdminData(d => ({
+    ...d,
+    hiddenColorEffects: d.hiddenColorEffects.filter(h => h !== id),
+  }))
 }
 
 /* ── Mutations — Size Effect Names ── */
@@ -132,52 +147,28 @@ export function adminUpdateEmoji(id: string, updates: Partial<AdminEmoji>) {
   }))
 }
 
-/* ── Mutations — Tutorial Positions ── */
-
-export function adminSetTutorialPositions(positions: Record<string, TutorialPosition>) {
-  setAdminData(d => ({ ...d, tutorialPositions: positions }))
-}
-
-export function adminSetTutorialPosition(stepId: string, pos: TutorialPosition) {
-  setAdminData(d => ({ ...d, tutorialPositions: { ...d.tutorialPositions, [stepId]: pos } }))
-}
-
-export function adminRemoveTutorialPosition(stepId: string) {
+export function adminToggleHideEmoji(id: string) {
   setAdminData(d => {
-    const { [stepId]: _, ...rest } = d.tutorialPositions
-    return { ...d, tutorialPositions: rest }
+    const hidden = d.hiddenEmojis.includes(id)
+      ? d.hiddenEmojis.filter(h => h !== id)
+      : [...d.hiddenEmojis, id]
+    return { ...d, hiddenEmojis: hidden }
   })
 }
 
-/* ── Mutations — Tutorial Texts ── */
-
-export function adminSetTutorialText(stepId: string, text: TutorialTextOverride) {
-  setAdminData(d => ({ ...d, tutorialTexts: { ...d.tutorialTexts, [stepId]: text } }))
+export function adminIsEmojiHidden(id: string): boolean {
+  return adminData().hiddenEmojis.includes(id)
 }
 
-export function adminResetTutorialTexts() {
-  setAdminData(d => ({ ...d, tutorialTexts: {} }))
-}
-
-/* ── Mutations — Tutorial Actions ── */
-
-export function adminSetTutorialAction(stepId: string, action: TutorialActionOverride) {
-  setAdminData(d => ({ ...d, tutorialActions: { ...d.tutorialActions, [stepId]: action } }))
-}
-
-export function adminResetTutorialActions() {
-  setAdminData(d => ({ ...d, tutorialActions: {} }))
-}
-
-/** Supprime les positions dont l'ID n'est pas dans validIds */
-export function adminCleanOrphanPositions(validIds: Set<string>) {
-  setAdminData(d => {
-    const cleaned: Record<string, TutorialPosition> = {}
-    for (const [id, pos] of Object.entries(d.tutorialPositions)) {
-      if (validIds.has(id)) cleaned[id] = pos
-    }
-    return { ...d, tutorialPositions: cleaned }
-  })
+export function adminRenameEmoji(id: string, label: string) {
+  if (!label) {
+    setAdminData(d => {
+      const { [id]: _, ...rest } = d.emojiOverrides
+      return { ...d, emojiOverrides: rest }
+    })
+  } else {
+    setAdminData(d => ({ ...d, emojiOverrides: { ...d.emojiOverrides, [id]: { label } } }))
+  }
 }
 
 /* ── Mutations — CSS ── */

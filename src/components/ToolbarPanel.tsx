@@ -1,31 +1,141 @@
 import { For, Show, createSignal } from 'solid-js'
-import { VENETIAN_PALETTE } from '../data/colors'
-import { baseSize, setBaseSize, sizeAmplitude, setSizeAmplitude } from '../stores/editor'
+import { Portal } from 'solid-js/web'
+import { baseSize, setBaseSize } from '../stores/editor'
 import { sizeFavorites, addSizeFavorite, removeSizeFavorite } from '../stores/workshops'
 import { getEmojiFavoritesList } from '../stores/emojis'
+import { getToolbarColors, getActivePalette, activePaletteId } from '../stores/palettes'
 import { applyInlineStyle, execFormatCommand, applyLink, getSelectedText, replaceSelectionWithHtml } from './Editor'
-import { updateBuffer, getBuffer } from './Header'
+import { updateBuffer, getBuffer, setPreview } from './Header'
 import { EffectsCatalog } from './EffectsCatalog'
 import type { CatalogTab } from './EffectsCatalog'
 import { FontPicker } from './FontPicker'
 import { EmojiPicker } from './EmojiPicker'
+import { PaletteManager } from './PaletteManager'
 import { Modal } from './Modal'
 import { showToast } from './Toast'
 
-const CUSTOM_COLORS_KEY = 'artlequin_custom_colors'
+/* ── SizeControl — slider + dropdown Word + input manuel ── */
 
-function loadCustomColors(): string[] {
-  try {
-    const raw = localStorage.getItem(CUSTOM_COLORS_KEY)
-    return raw ? JSON.parse(raw) : []
-  } catch { return [] }
+const WORD_SIZES = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 22, 24, 26, 28, 30, 32, 36, 40, 44, 48, 54, 60, 66, 72, 80, 90, 100, 120]
+
+function SizeControl(props: { value: number; onChange: (v: number) => void; onDrag: (v: number) => void; onAddFav: () => void }) {
+  const [editing, setEditing] = createSignal(false)
+  const [dropdownOpen, setDropdownOpen] = createSignal(false)
+  const [editVal, setEditVal] = createSignal('')
+  const [dropdownPos, setDropdownPos] = createSignal({ top: 0, left: 0 })
+  let inputRef: HTMLInputElement | undefined
+  let dropdownRef: HTMLDivElement | undefined
+  let wrapRef: HTMLDivElement | undefined
+
+  const startEdit = () => {
+    setEditVal(String(props.value))
+    setDropdownOpen(false)
+    setEditing(true)
+    requestAnimationFrame(() => { inputRef?.focus(); inputRef?.select() })
+  }
+
+  const confirm = () => {
+    const v = parseInt(editVal())
+    if (v && v >= 6 && v <= 200) props.onChange(v)
+    setEditing(false)
+  }
+
+  const selectSize = (size: number) => {
+    props.onChange(size)
+    setDropdownOpen(false)
+  }
+
+  const toggleDropdown = () => {
+    if (dropdownOpen()) { setDropdownOpen(false); return }
+    // Calculer la position fixed du dropdown
+    if (wrapRef) {
+      const rect = wrapRef.getBoundingClientRect()
+      setDropdownPos({ top: rect.bottom + 4, left: rect.left })
+    }
+    setDropdownOpen(true)
+    requestAnimationFrame(() => {
+      if (dropdownRef) {
+        const active = dropdownRef.querySelector('.size-dropdown-item.active')
+        if (active) active.scrollIntoView({ block: 'center' })
+      }
+    })
+  }
+
+  return (
+    <div class="slider-group">
+      <span class="slider-label">Taille</span>
+      <input
+        type="range"
+        min="8"
+        max="72"
+        value={Math.min(72, Math.max(8, props.value))}
+        onInput={(e) => props.onDrag(parseInt(e.currentTarget.value))}
+        onChange={(e) => props.onChange(parseInt(e.currentTarget.value))}
+      />
+
+      <div class="size-control-wrap" ref={wrapRef}>
+        <Show when={editing()} fallback={
+          <div class="size-value-row">
+            <button class="slider-value slider-value-clickable" onClick={startEdit} title="Saisir une taille exacte">
+              {props.value}
+            </button>
+            <button class="size-dropdown-arrow" onClick={toggleDropdown} title="Tailles prédéfinies">&#9662;</button>
+          </div>
+        }>
+          <input
+            ref={inputRef}
+            class="slider-value-input"
+            type="text"
+            inputmode="numeric"
+            value={editVal()}
+            onInput={(e) => {
+              const val = e.currentTarget.value.replace(/[^\d]/g, '')
+              setEditVal(val)
+              const v = parseInt(val)
+              if (v && v >= 6 && v <= 200) setPreview({ fontSize: v })
+            }}
+            onKeyDown={(e) => { if (e.key === 'Enter') confirm(); if (e.key === 'Escape') { setEditing(false); setPreview(null) } }}
+            onBlur={() => { confirm(); setPreview(null) }}
+          />
+        </Show>
+
+        <Show when={dropdownOpen()}>
+          <Portal>
+            <div class="size-dropdown-backdrop" onClick={() => { setDropdownOpen(false); setPreview(null) }} />
+            <div
+              class="size-dropdown"
+              ref={dropdownRef}
+              style={{ top: `${dropdownPos().top}px`, left: `${dropdownPos().left}px` }}
+              onMouseLeave={() => setPreview(null)}
+            >
+              <For each={WORD_SIZES}>
+                {(size) => (
+                  <button
+                    class={`size-dropdown-item ${size === props.value ? 'active' : ''}`}
+                    onClick={() => { selectSize(size); setPreview(null) }}
+                    onMouseEnter={() => setPreview({ fontSize: size })}
+                  >
+                    {size}
+                  </button>
+                )}
+              </For>
+            </div>
+          </Portal>
+        </Show>
+      </div>
+
+      <button class="fav-add" onClick={props.onAddFav} title="Ajouter la taille aux favoris">+</button>
+    </div>
+  )
 }
 
 export function ToolbarPanel() {
   const [colorMode, setColorMode] = createSignal<'text' | 'bg'>('text')
   const [catalogOpen, setCatalogOpen] = createSignal(false)
   const [catalogTab, setCatalogTab] = createSignal<CatalogTab>('base')
-  const [customColors, setCustomColors] = createSignal<string[]>(loadCustomColors())
+  const [paletteOpen, setPaletteOpen] = createSignal(false)
+  const [palettePos, setPalettePos] = createSignal({ top: 0, left: 0 })
+  let paletteRef: HTMLButtonElement | undefined
 
   // Modale lien
   const [linkOpen, setLinkOpen] = createSignal(false)
@@ -42,19 +152,13 @@ export function ToolbarPanel() {
     }
   }
 
-  const addCustomColor = (color: string) => {
-    const current = customColors()
-    if (current.includes(color)) return
-    if (VENETIAN_PALETTE.some(c => c.hex.toLowerCase() === color.toLowerCase())) return
-    const updated = [...current, color]
-    setCustomColors(updated)
-    localStorage.setItem(CUSTOM_COLORS_KEY, JSON.stringify(updated))
-  }
-
-  const removeCustomColor = (color: string) => {
-    const updated = customColors().filter(c => c !== color)
-    setCustomColors(updated)
-    localStorage.setItem(CUSTOM_COLORS_KEY, JSON.stringify(updated))
+  const togglePaletteManager = () => {
+    if (paletteOpen()) { setPaletteOpen(false); return }
+    if (paletteRef) {
+      const rect = paletteRef.getBoundingClientRect()
+      setPalettePos({ top: rect.bottom + 6, left: Math.max(8, rect.left - 100) })
+    }
+    setPaletteOpen(true)
   }
 
   const openCatalog = (tab: CatalogTab) => {
@@ -85,64 +189,7 @@ export function ToolbarPanel() {
             }}
           >🔗</button>
           <EmojiPicker onSelect={(emoji) => replaceSelectionWithHtml(emoji)} />
-          <div class="separator" />
-          <div class="toggle-group">
-            <button class={`toggle-btn ${colorMode() === 'text' ? 'active' : ''}`} onClick={() => setColorMode('text')}>Texte</button>
-            <button class={`toggle-btn ${colorMode() === 'bg' ? 'active' : ''}`} onClick={() => setColorMode('bg')}>Fond</button>
-          </div>
-          <div class="swatches">
-            <For each={VENETIAN_PALETTE}>
-              {(c) => <div class="swatch" style={{ background: c.hex }} title={c.name} onClick={() => applyColor(c.hex)} />}
-            </For>
-            <For each={customColors()}>
-              {(color) => (
-                <div class="swatch" style={{ background: color }} title="Double-clic pour retirer" onClick={() => applyColor(color)} onDblClick={() => removeCustomColor(color)} />
-              )}
-            </For>
-          </div>
-          <div class="color-picker-wrapper">
-            <div class="color-picker-visual" />
-            <input type="color" value="#c42b45" onChange={(e) => { applyColor(e.currentTarget.value); addCustomColor(e.currentTarget.value) }} />
-          </div>
-        </div>
-
-        {/* Row 2: Font + Size + Intensity + Catalogue */}
-        <div class="toolbar-row">
-          <FontPicker />
-          <div class="separator" />
-          <div class="slider-group">
-            <span class="slider-label">Taille</span>
-            <input type="range" min="12" max="48" value={baseSize()} onInput={(e) => setBaseSize(parseInt(e.currentTarget.value))} onChange={(e) => { applyInlineStyle('fontSize', `${e.currentTarget.value}px`); updateBuffer({ fontSize: parseInt(e.currentTarget.value) }) }} />
-            <span class="slider-value">{baseSize()}</span>
-            <button class="fav-add" onClick={() => addSizeFavorite(baseSize())} title="Ajouter la taille aux favoris">+</button>
-          </div>
-          <div class="slider-group">
-            <span class="slider-label">Amplitude</span>
-            <input type="range" min="0" max="60" step="0.1" value={sizeAmplitude()} onInput={(e) => setSizeAmplitude(parseFloat(e.currentTarget.value))} />
-            <span class="slider-value">{sizeAmplitude().toFixed(0)}</span>
-          </div>
-          <Show when={sizeFavorites().length > 0}>
-            <div class="fav-pills">
-              <For each={sizeFavorites()}>
-                {(size) => (
-                  <button
-                    class="fav-pill"
-                    title={`${size}px — double-clic pour retirer`}
-                    onClick={() => { setBaseSize(size); applyInlineStyle('fontSize', `${size}px`) }}
-                    onDblClick={() => removeSizeFavorite(size)}
-                  >
-                    {size}
-                  </button>
-                )}
-              </For>
-            </div>
-          </Show>
-          <div class="separator" />
-          <button class="btn-compact" onClick={() => openCatalog('base')} title="Parcourir tous les effets">Catalogue</button>
-          <button class="btn-compact" onClick={() => openCatalog('perso')} title="Votre collection d'effets">Mon atelier</button>
-          <button class="btn-compact" onClick={() => openCatalog('creer')} title="Creer un effet par f(x) ou trace">Creer</button>
           <Show when={getEmojiFavoritesList().length > 0}>
-            <div class="separator" />
             <div class="fav-pills">
               <For each={getEmojiFavoritesList()}>
                 {(emoji) => (
@@ -157,10 +204,67 @@ export function ToolbarPanel() {
               </For>
             </div>
           </Show>
+          <div class="separator" />
+          <div class="toggle-group">
+            <button class={`toggle-btn ${colorMode() === 'text' ? 'active' : ''}`} onClick={() => setColorMode('text')}>Texte</button>
+            <button class={`toggle-btn ${colorMode() === 'bg' ? 'active' : ''}`} onClick={() => setColorMode('bg')}>Fond</button>
+          </div>
+          <div class="swatches">
+            <For each={getToolbarColors()}>
+              {(c) => <div class="swatch" style={{ background: c.hex }} title={c.name} onClick={() => applyColor(c.hex)} />}
+            </For>
+          </div>
+          <button
+            ref={paletteRef}
+            class="palette-btn"
+            onClick={togglePaletteManager}
+            title="Gerer les palettes"
+          >
+            <div class="palette-btn-icon" />
+            <Show when={getActivePalette()}>
+              <span class="palette-btn-name">{getActivePalette()!.name}</span>
+            </Show>
+          </button>
+        </div>
+
+        {/* Row 2: Font + Size + Intensity + Catalogue */}
+        <div class="toolbar-row">
+          <FontPicker />
+          <div class="separator" />
+          <SizeControl
+            value={baseSize()}
+            onDrag={(v) => { setBaseSize(v); updateBuffer({ fontSize: v }) }}
+            onChange={(v) => { setBaseSize(v); applyInlineStyle('fontSize', `${v}px`); updateBuffer({ fontSize: v }) }}
+            onAddFav={() => addSizeFavorite(baseSize())}
+          />
+          <Show when={sizeFavorites().length > 0}>
+            <div class="size-favs">
+              <For each={sizeFavorites()}>
+                {(size) => (
+                  <div class="size-fav-chip">
+                    <button
+                      class="size-fav-value"
+                      onClick={() => { setBaseSize(size); applyInlineStyle('fontSize', `${size}px`); updateBuffer({ fontSize: size }) }}
+                      onMouseEnter={() => setPreview({ fontSize: size })}
+                      onMouseLeave={() => setPreview(null)}
+                    >
+                      {size}
+                    </button>
+                    <button class="size-fav-remove" onClick={() => removeSizeFavorite(size)} title="Retirer">×</button>
+                  </div>
+                )}
+              </For>
+            </div>
+          </Show>
+          <div class="separator" />
+          <button class="btn-compact" onClick={() => openCatalog('base')} title="Parcourir tous les effets">Catalogue</button>
+          <button class="btn-compact" onClick={() => openCatalog('perso')} title="Votre collection d'effets">Mon atelier</button>
+          <button class="btn-compact" onClick={() => openCatalog('creer')} title="Creer un effet par f(x) ou trace">Creer</button>
         </div>
       </div>
 
       <EffectsCatalog open={catalogOpen()} onClose={() => setCatalogOpen(false)} initialTab={catalogTab()} />
+      <PaletteManager open={paletteOpen()} onClose={() => setPaletteOpen(false)} anchorPos={palettePos()} />
 
       {/* Modale lien */}
       <Modal open={linkOpen()} onClose={() => setLinkOpen(false)} title="Ajouter un lien" size="sm" zIndex={300}>
