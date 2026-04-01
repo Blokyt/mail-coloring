@@ -1,5 +1,5 @@
 import { createSignal, For, Show } from 'solid-js'
-import { VENETIAN_PALETTE } from '../data/colors'
+import { getToolbarColors } from '../stores/palettes'
 import { PREVIEW_WORDS } from '../data/preview'
 
 interface Props {
@@ -8,17 +8,23 @@ interface Props {
 
 export function ColorCreator(props: Props) {
   const [palette, setPalette] = createSignal<string[]>([])
-  const [pickerColor, setPickerColor] = createSignal('#c42b45')
+  const [selectedIdx, setSelectedIdx] = createSignal<number | null>(null)
 
   const addColor = (hex: string) => {
     setPalette(prev => [...prev, hex])
+    setSelectedIdx(null)
   }
 
   const removeColor = (index: number) => {
     setPalette(prev => prev.filter((_, i) => i !== index))
+    setSelectedIdx(null)
   }
 
-  const clear = () => setPalette([])
+  const editColor = (index: number, hex: string) => {
+    setPalette(prev => prev.map((c, i) => i === index ? hex : c))
+  }
+
+  const clear = () => { setPalette([]); setSelectedIdx(null) }
 
   const previewHtml = (text: string): string => {
     const colors = palette()
@@ -38,34 +44,63 @@ export function ColorCreator(props: Props) {
       <div class="color-creator-label">Vos couleurs :</div>
       <div class="color-creator-palette">
         <For each={palette()}>
-          {(color, i) => (
-            <div
-              class="color-creator-swatch"
-              style={{ background: color }}
-              title="Cliquer pour retirer"
-              onClick={() => removeColor(i())}
-            />
-          )}
+          {(color, i) => {
+            const isSelected = () => selectedIdx() === i()
+            return (
+              <div class="swatch-wrap">
+                <div
+                  class={`swatch ${isSelected() ? 'swatch-active' : ''}`}
+                  style={{ background: color }}
+                  title={color}
+                  onClick={() => setSelectedIdx(prev => prev === i() ? null : i())}
+                />
+                <Show when={isSelected()}>
+                  <button
+                    class="swatch-remove"
+                    onClick={(e) => { e.stopPropagation(); removeColor(i()) }}
+                  >x</button>
+                </Show>
+              </div>
+            )
+          }}
         </For>
-        <div class="color-creator-picker-wrap">
-          <div class="color-creator-picker-visual" style={{ background: pickerColor() }} />
+        <div class="color-picker-wrapper">
+          <div class="color-picker-visual" />
           <input
             type="color"
-            value={pickerColor()}
-            onChange={(e) => { setPickerColor(e.currentTarget.value); addColor(e.currentTarget.value) }}
+            value={selectedIdx() !== null ? palette()[selectedIdx()!] : '#c42b45'}
+            onInput={(e) => {
+              const idx = selectedIdx()
+              if (idx !== null) {
+                editColor(idx, e.currentTarget.value)
+              }
+            }}
+            onChange={(e) => {
+              if (selectedIdx() === null) {
+                addColor(e.currentTarget.value)
+              }
+            }}
           />
         </div>
       </div>
 
       <div class="color-creator-label">Palette rapide :</div>
       <div class="color-creator-swatches">
-        <For each={VENETIAN_PALETTE}>
+        <For each={getToolbarColors()}>
           {(c) => (
             <div
               class="color-creator-swatch"
               style={{ background: c.hex }}
               title={c.name}
-              onClick={() => addColor(c.hex)}
+              onClick={() => {
+                const idx = selectedIdx()
+                if (idx !== null) {
+                  editColor(idx, c.hex)
+                  setSelectedIdx(null)
+                } else {
+                  addColor(c.hex)
+                }
+              }}
             />
           )}
         </For>
@@ -82,7 +117,7 @@ export function ColorCreator(props: Props) {
         </div>
 
         <div class="color-creator-actions">
-          <button class="btn btn-lavender" onClick={() => props.onSave([...palette()], '')}>
+          <button class="btn btn-lavender" onClick={() => { props.onSave([...palette()], ''); clear() }}>
             Enregistrer
           </button>
           <button class="btn" onClick={clear}>Effacer</button>

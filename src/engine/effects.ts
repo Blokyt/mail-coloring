@@ -62,7 +62,9 @@ export interface ComposedEffectData {
 // EFFETS COULEUR PRÉDÉFINIS
 // ============================================
 
-export const COLOR_EFFECTS: Record<string, ColorEffect> = {
+/** Effets couleur par défaut — utilisés UNIQUEMENT comme seed initial pour admin-data.json.
+ *  En runtime, toujours lire depuis adminData().colorEffects via le store. */
+export const DEFAULT_COLOR_EFFECTS: Record<string, ColorEffect> = {
   arcenciel: {
     name: 'Arc-en-ciel',
     icon: '',
@@ -151,28 +153,18 @@ export const COLOR_EFFECTS: Record<string, ColorEffect> = {
   },
 }
 
-/** Retourne les effets couleur texte (base + overrides admin, filtré par hidden) */
-export function getEffectiveColorEffects(adminOverrides?: Record<string, { name: string; colors: string[] }>, hiddenIds?: string[]): Record<string, ColorEffect> {
-  const hidden = new Set(hiddenIds ?? [])
+/** Retourne les effets couleur texte depuis adminData (source unique de vérité) */
+export function getEffectiveColorEffects(effects: Record<string, { name: string; colors: string[] }>): Record<string, ColorEffect> {
   const result: Record<string, ColorEffect> = {}
-  for (const [id, effect] of Object.entries(COLOR_EFFECTS)) {
-    if (hidden.has(id)) continue
-    const ov = adminOverrides?.[id]
-    result[id] = ov ? { ...effect, name: ov.name, colors: ov.colors } : effect
-  }
-  if (adminOverrides) {
-    for (const [id, ov] of Object.entries(adminOverrides)) {
-      if (!COLOR_EFFECTS[id] && !hidden.has(id)) {
-        result[id] = { name: ov.name, icon: '', colors: ov.colors }
-      }
-    }
+  for (const [id, e] of Object.entries(effects)) {
+    result[id] = { name: e.name, icon: '', colors: e.colors }
   }
   return result
 }
 
-/** Les effets fond sont toujours déduits des effets texte — jamais créés séparément */
-export function getEffectiveBgEffects(adminOverrides?: Record<string, { name: string; colors: string[] }>, hiddenIds?: string[]): Record<string, ColorEffect> {
-  const textEffects = getEffectiveColorEffects(adminOverrides, hiddenIds)
+/** Les effets fond sont déduits automatiquement des effets texte */
+export function getEffectiveBgEffects(effects: Record<string, { name: string; colors: string[] }>): Record<string, ColorEffect> {
+  const textEffects = getEffectiveColorEffects(effects)
   const result: Record<string, ColorEffect> = {}
   for (const [id, effect] of Object.entries(textEffects)) {
     result[`${id}_bg`] = { ...effect, mode: 'bg' }
@@ -191,7 +183,9 @@ function gaussShape(t: number, center: number, sigma2: number): number {
   return Math.max(0, (raw - edge) / (1 - edge))
 }
 
-export const SIZE_EFFECTS: Record<string, SizeEffect> = {
+/** Effets taille par défaut — utilisés UNIQUEMENT comme seed initial pour admin-data.json.
+ *  En runtime, toujours lire depuis adminData().sizeEffects via le store. */
+export const DEFAULT_SIZE_EFFECTS: Record<string, SizeEffect> = {
   montee: {
     name: 'Montee lineaire',
     icon: '',
@@ -237,6 +231,15 @@ export const SIZE_EFFECTS: Record<string, SizeEffect> = {
   },
 }
 
+/** Interpole une valeur dans un profil pour t dans [0,1] */
+export function sampleProfile(profile: number[], t: number): number {
+  const pIdx = t * (profile.length - 1)
+  const lo = Math.floor(pIdx)
+  const hi = Math.min(lo + 1, profile.length - 1)
+  const frac = pIdx - lo
+  return profile[lo] * (1 - frac) + profile[hi] * frac
+}
+
 // ============================================
 // APPLICATION DES EFFETS
 // ============================================
@@ -247,15 +250,13 @@ export const SIZE_EFFECTS: Record<string, SizeEffect> = {
  */
 export function applyEffects(
   text: string,
-  colorEffectId: string | null,
-  sizeEffectId: string | null,
+  colorConfig: { colors: string[], mode?: ColorMode } | null,
+  sizeProfile: number[] | null,
   options: EffectOptions,
 ): string {
   const chars = [...text]
-  const colorEffect = colorEffectId ? COLOR_EFFECTS[colorEffectId] : null
-  const sizeEffect = sizeEffectId ? SIZE_EFFECTS[sizeEffectId] : null
 
-  if (!colorEffect && !sizeEffect) return text
+  if (!colorConfig && !sizeProfile) return text
 
   const nonSpaceCount = chars.filter(c => c !== ' ').length
   let charIdx = 0
@@ -269,15 +270,15 @@ export function applyEffects(
 
     const styles: string[] = []
 
-    if (colorEffect) {
-      const color = colorEffect.colors[charIdx % colorEffect.colors.length]
-      const prop = colorEffect.mode === 'bg' ? 'background-color' : 'color'
+    if (colorConfig) {
+      const color = colorConfig.colors[charIdx % colorConfig.colors.length]
+      const prop = colorConfig.mode === 'bg' ? 'background-color' : 'color'
       styles.push(`${prop}:${color}`)
     }
 
-    if (sizeEffect) {
+    if (sizeProfile) {
       const t = nonSpaceCount <= 1 ? 0 : charIdx / (nonSpaceCount - 1)
-      const shape = sizeEffect.getShape(t)
+      const shape = sampleProfile(sizeProfile, t)
       const size = Math.max(8, Math.round(options.baseSize + options.amplitude * shape))
       styles.push(`font-size:${size}px`)
     }
@@ -303,11 +304,10 @@ export function applySizeProfile(
   text: string,
   profile: number[],
   options: EffectOptions,
-  colorEffectId?: string | null,
+  colorConfig?: { colors: string[], mode?: ColorMode } | null,
   raw?: boolean,
 ): string {
   const chars = [...text]
-  const colorEffect = colorEffectId ? COLOR_EFFECTS[colorEffectId] : null
   const nonSpaceChars = chars.filter(c => c !== ' ')
   const total = nonSpaceChars.length
 
@@ -327,9 +327,9 @@ export function applySizeProfile(
     const size = Math.max(8, Math.round(options.baseSize + (raw ? value : options.amplitude * value)))
     const styles: string[] = [`font-size:${size}px`]
 
-    if (colorEffect) {
-      const color = colorEffect.colors[charIdx % colorEffect.colors.length]
-      const prop = colorEffect.mode === 'bg' ? 'background-color' : 'color'
+    if (colorConfig) {
+      const color = colorConfig.colors[charIdx % colorConfig.colors.length]
+      const prop = colorConfig.mode === 'bg' ? 'background-color' : 'color'
       styles.push(`${prop}:${color}`)
     }
 
@@ -350,14 +350,11 @@ export function applyComposedEffect(
   options: EffectOptions,
   resolvedColors?: string[] | null,
   colorMode?: ColorMode | null,
+  resolvedSizeProfile?: number[] | null,
 ): string {
   const chars = [...text]
-  const sizeEffect = data.sizeEffectRef ? SIZE_EFFECTS[data.sizeEffectRef] : null
-  const colorEffect = data.colorEffectRef ? COLOR_EFFECTS[data.colorEffectRef] : null
-  const colors = resolvedColors
-    ?? (colorEffect?.colors)
-    ?? (data.flatColor ? [data.flatColor] : null)
-  const mode = colorMode ?? colorEffect?.mode ?? 'text'
+  const colors = resolvedColors ?? (data.flatColor ? [data.flatColor] : null)
+  const mode = colorMode ?? 'text'
 
   const nonSpaceCount = chars.filter(c => c !== ' ').length
   let charIdx = 0
@@ -368,9 +365,9 @@ export function applyComposedEffect(
       const prop = mode === 'bg' ? 'background-color' : 'color'
       styles.push(`${prop}:${colors[charIdx % colors.length]}`)
     }
-    if (sizeEffect) {
+    if (resolvedSizeProfile) {
       const t = nonSpaceCount <= 1 ? 0 : charIdx / (nonSpaceCount - 1)
-      const size = Math.max(8, Math.round(options.baseSize + options.amplitude * sizeEffect.getShape(t)))
+      const size = Math.max(8, Math.round(options.baseSize + options.amplitude * sampleProfile(resolvedSizeProfile, t)))
       styles.push(`font-size:${size}px`)
     }
     if (data.font) styles.push(`font-family:${data.font}`)
@@ -541,15 +538,239 @@ export function interpolateProfile(profile: number[], charIdx: number, total: nu
   return profile[lo] * (1 - frac) + profile[hi] * frac
 }
 
-/** Nettoyage HTML pour compatibilité Outlook */
+/** Convertit toute couleur CSS (rgb, rgba, hex, named) en hex 6 digits.
+ *  Outlook/Word EXIGE du hex — rgb() ne fonctionne PAS. */
+function toHex(color: string): string {
+  if (!color) return ''
+  // Déjà en hex
+  if (color.startsWith('#')) {
+    if (color.length === 4) return '#' + color[1]+color[1] + color[2]+color[2] + color[3]+color[3]
+    return color
+  }
+  // rgb(r, g, b) ou rgba(r, g, b, a)
+  const m = color.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/)
+  if (m) {
+    const r = parseInt(m[1]).toString(16).padStart(2, '0')
+    const g = parseInt(m[2]).toString(16).padStart(2, '0')
+    const b = parseInt(m[3]).toString(16).padStart(2, '0')
+    return `#${r}${g}${b}`
+  }
+  // Fallback : utiliser un canvas pour résoudre les couleurs nommées
+  const ctx = document.createElement('canvas').getContext('2d')
+  if (ctx) { ctx.fillStyle = color; return ctx.fillStyle }
+  return color
+}
+
+/**
+ * Nettoyage HTML complet pour compatibilité Outlook (moteur Word).
+ *
+ * Stratégie :
+ * - Aplatir le DOM en tokens {text, style} par caractère
+ * - Fusionner les caractères adjacents avec le même style
+ * - Reconstruire avec <span style="..."> et balises <b>/<i>/<u>/<s>
+ * - Toutes les couleurs en HEX (Outlook refuse rgb())
+ * - Tailles en px (plus fiable cross-client que pt)
+ * - Espaces converties en &nbsp; (Outlook collapse les espaces normales)
+ * - Wrapper chaque ligne dans un <p> (Word gère les paragraphes indépendamment)
+ */
 export function cleanForOutlook(html: string): string {
   const div = document.createElement('div')
   div.innerHTML = html
-  div.querySelectorAll('*').forEach(el => {
-    el.removeAttribute('class')
-    el.removeAttribute('id')
-    el.removeAttribute('data-decoration')
-    if (el.innerHTML === '\u200B') el.innerHTML = ''
+
+  // ── Phase 1 : pré-nettoyage du DOM ──
+  div.querySelectorAll('.line-break').forEach(el => el.remove())
+  div.querySelectorAll('[data-size-effect]').forEach(wrapper => {
+    const parent = wrapper.parentNode
+    if (!parent) return
+    while (wrapper.firstChild) parent.insertBefore(wrapper.firstChild, wrapper)
+    wrapper.remove()
   })
-  return div.innerHTML
+
+  // ── Phase 2 : aplatir en tokens ──
+  interface Token {
+    type: 'char'
+    text: string
+    color: string
+    bg: string
+    fontSize: string
+    fontFamily: string
+    bold: boolean
+    italic: boolean
+    underline: boolean
+    strike: boolean
+    href: string
+  }
+  interface BrToken { type: 'br' }
+  type AnyToken = Token | BrToken
+
+  const tokens: AnyToken[] = []
+
+  function walkNode(node: Node, inherited: Partial<Token>) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent || ''
+      if (text === '\u200B') return
+      for (const ch of text) {
+        tokens.push({
+          type: 'char',
+          text: ch,
+          color: inherited.color || '',
+          bg: inherited.bg || '',
+          fontSize: inherited.fontSize || '',
+          fontFamily: inherited.fontFamily || '',
+          bold: inherited.bold || false,
+          italic: inherited.italic || false,
+          underline: inherited.underline || false,
+          strike: inherited.strike || false,
+          href: inherited.href || '',
+        })
+      }
+      return
+    }
+
+    if (node.nodeName === 'BR') {
+      tokens.push({ type: 'br' })
+      return
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) return
+    const el = node as HTMLElement
+    const s = el.style
+    const next: Partial<Token> = { ...inherited }
+
+    // Couleur texte
+    if (s.color && s.color !== 'inherit') next.color = toHex(s.color)
+    else if (el.tagName === 'FONT' && el.getAttribute('color')) next.color = toHex(el.getAttribute('color')!)
+
+    // Background
+    const bg = s.backgroundColor
+    if (bg && bg !== 'transparent' && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'inherit') next.bg = toHex(bg)
+
+    if (s.fontSize) next.fontSize = s.fontSize
+    if (s.fontFamily) next.fontFamily = s.fontFamily
+
+    if (s.fontWeight === '700' || s.fontWeight === 'bold' || el.tagName === 'B' || el.tagName === 'STRONG') next.bold = true
+    if (s.fontWeight === '400' || s.fontWeight === 'normal') next.bold = false
+    if (s.fontStyle === 'italic' || el.tagName === 'I' || el.tagName === 'EM') next.italic = true
+    if (s.fontStyle === 'normal') next.italic = false
+
+    const td = s.textDecoration || s.textDecorationLine || ''
+    if (td.includes('underline') || el.tagName === 'U') next.underline = true
+    if (td.includes('line-through') || el.tagName === 'S' || el.tagName === 'STRIKE') next.strike = true
+    if (td === 'none') { next.underline = false; next.strike = false }
+
+    if (el.tagName === 'A') {
+      next.href = el.getAttribute('href') || ''
+    }
+
+    for (const child of el.childNodes) walkNode(child, next)
+  }
+
+  for (const child of div.childNodes) walkNode(child, {})
+
+  // ── Phase 3 : fusionner les tokens adjacents avec le même style ──
+  interface MergedRun {
+    type: 'run'
+    text: string
+    color: string
+    bg: string
+    fontSize: string
+    fontFamily: string
+    bold: boolean
+    italic: boolean
+    underline: boolean
+    strike: boolean
+    href: string
+  }
+  type AnyRun = MergedRun | BrToken
+
+  const runs: AnyRun[] = []
+
+  // PAS de fusion des runs : chaque caractère garde son propre <span> avec tous ses styles.
+  // Quand Outlook (Word) insère un retour à la ligne, il coupe les éléments au curseur.
+  // Si chaque span ne contient qu'un seul caractère, Word ne peut pas casser le style.
+  // Exception : les espaces consécutives sont fusionnées (pas de style à perdre).
+  for (const tok of tokens) {
+    if (tok.type === 'br') { runs.push(tok); continue }
+    const isSpace = tok.text === ' ' || tok.text === '\u00A0'
+    const last = runs[runs.length - 1]
+    if (isSpace && last && last.type === 'run' && (last.text === ' ' || last.text === '\u00A0' || /^[\s\u00A0]+$/.test(last.text))) {
+      last.text += tok.text
+    } else {
+      runs.push({ type: 'run', ...tok })
+    }
+  }
+
+  // ── Phase 4 : générer du HTML compatible Outlook ──
+  function escapeHtml(s: string): string {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  }
+
+  function fontFamilyClean(ff: string): string {
+    if (!ff) return ''
+    const clean = ff.split(',')[0].replace(/["']/g, '').trim()
+    if (!clean) return ''
+    return clean + ', sans-serif'
+  }
+
+  function runToHtml(run: MergedRun): string {
+    // Espaces (normales + non-breaking) → &nbsp; (Outlook collapse les espaces normales)
+    let text = escapeHtml(run.text).replace(/[ \u00A0]/g, '&nbsp;')
+
+    // Tags sémantiques (Word les gère nativement)
+    if (run.bold) text = `<b>${text}</b>`
+    if (run.italic) text = `<i>${text}</i>`
+    if (run.underline) text = `<u>${text}</u>`
+    if (run.strike) text = `<s>${text}</s>`
+
+    // Construire le style inline — tout en un seul <span>
+    // Note : la couleur texte est aussi en <font color> (Outlook/Word ignore
+    // souvent style="color:..." mais respecte toujours <font color>)
+    const styles: string[] = []
+    if (run.color) styles.push(`color:${run.color}`)
+    if (run.bg) styles.push(`background-color:${run.bg}`)
+    if (run.fontSize) styles.push(`font-size:${run.fontSize}`)
+    const ff = fontFamilyClean(run.fontFamily)
+    if (ff) styles.push(`font-family:${ff}`)
+
+    if (styles.length > 0) {
+      text = `<span style="${styles.join(';')}">${text}</span>`
+    }
+
+    // <font color> en wrapper — Outlook/Word le respecte toujours
+    if (run.color) {
+      text = `<font color="${run.color}">${text}</font>`
+    }
+
+    // Liens
+    if (run.href) {
+      text = `<a href="${escapeHtml(run.href)}" target="_blank">${text}</a>`
+    }
+
+    return text
+  }
+
+  // Construire les lignes (split par BR)
+  const lines: MergedRun[][] = [[]]
+  for (const run of runs) {
+    if (run.type === 'br') {
+      lines.push([])
+    } else {
+      lines[lines.length - 1].push(run)
+    }
+  }
+
+  // "Style breaker" : span invisible sans aucun style à la fin de chaque <p>.
+  // Quand l'utilisateur appuie Entrée dans Outlook, Word crée un nouveau paragraphe
+  // en héritant du style du DERNIER élément. Sans ce breaker, le background/couleur
+  // du dernier caractère se propage au nouveau paragraphe et déforme tout.
+  const STYLE_BREAKER = '<span style="font-size:0;line-height:0;mso-hide:all">&#8203;</span>'
+
+  // Chaque ligne → un <p> avec mso-line-height-rule pour un rendu stable
+  const paragraphs = lines.map(line => {
+    if (line.length === 0) return '<p style="margin:0;padding:0;mso-line-height-rule:exactly">&nbsp;</p>'
+    const content = line.map(runToHtml).join('')
+    return `<p style="margin:0;padding:0;mso-line-height-rule:exactly">${content}${STYLE_BREAKER}</p>`
+  })
+
+  return paragraphs.join('')
 }

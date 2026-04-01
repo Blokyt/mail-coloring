@@ -12,7 +12,36 @@ import './styles/app.css'
 // Charger les donnees admin au demarrage
 loadAdminData()
 
+const BTN_SELECTORS = '.btn,.btn-icon,.btn-compact,.side-tag,.fav-pill,.toggle-btn,.size-dropdown-item,.size-fav-value,.size-fav-remove,.fav-add,.palette-btn,.swatch-remove,.link-indicator,.link-indicator-btn'
+
 export default function App() {
+  // Listener global pour animer les boutons au clic malgre les preventDefault() sur les parents
+  // (preventDefault sur mousedown empeche le pseudo-state :active du navigateur)
+  onMount(() => {
+    let pressed: Element | null = null
+
+    const onDown = (e: PointerEvent) => {
+      const btn = (e.target as Element).closest(BTN_SELECTORS)
+      if (!btn) return
+      pressed = btn
+      btn.classList.add('btn-pressed')
+    }
+
+    const onUp = () => {
+      if (pressed) { pressed.classList.remove('btn-pressed'); pressed = null }
+    }
+
+    document.addEventListener('pointerdown', onDown)
+    document.addEventListener('pointerup', onUp)
+    document.addEventListener('pointercancel', onUp)
+
+    onCleanup(() => {
+      document.removeEventListener('pointerdown', onDown)
+      document.removeEventListener('pointerup', onUp)
+      document.removeEventListener('pointercancel', onUp)
+    })
+  })
+
   // Ctrl+Shift+A pour toggle admin
   createEffect(() => {
     const handler = (e: KeyboardEvent) => {

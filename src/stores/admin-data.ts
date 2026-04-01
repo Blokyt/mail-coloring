@@ -1,10 +1,16 @@
 import { createSignal } from 'solid-js'
+import { DEFAULT_COLOR_EFFECTS, DEFAULT_SIZE_EFFECTS } from '../engine/effects'
 
 /* ── Types ── */
 
 export interface AdminColorEffect {
   name: string
   colors: string[]
+}
+
+export interface AdminSizeEffect {
+  name: string
+  profile: number[]
 }
 
 export interface AdminEmoji {
@@ -14,22 +20,16 @@ export interface AdminEmoji {
 }
 
 export interface AdminData {
+  effectsInitialized: boolean
   colorEffects: Record<string, AdminColorEffect>
-  hiddenColorEffects: string[]
-  sizeEffectNames: Record<string, string>
-  emojis: AdminEmoji[]
-  hiddenEmojis: string[]
-  emojiOverrides: Record<string, { label: string }>
+  sizeEffects: Record<string, AdminSizeEffect>
   css: Record<string, string | number>
 }
 
 const EMPTY: AdminData = {
+  effectsInitialized: false,
   colorEffects: {},
-  hiddenColorEffects: [],
-  sizeEffectNames: {},
-  emojis: [],
-  hiddenEmojis: [],
-  emojiOverrides: {},
+  sizeEffects: {},
   css: {},
 }
 
@@ -39,20 +39,58 @@ const [adminData, setAdminData] = createSignal<AdminData>({ ...EMPTY })
 const [savedAdminData, setSavedAdminData] = createSignal<AdminData>({ ...EMPTY })
 const [loaded, setLoaded] = createSignal(false)
 
+const SIZE_SAMPLES = 64
+
+/** Seed les effets couleur depuis les defaults hardcodés */
+function seedColorEffects(): Record<string, AdminColorEffect> {
+  const result: Record<string, AdminColorEffect> = {}
+  for (const [id, e] of Object.entries(DEFAULT_COLOR_EFFECTS)) {
+    result[id] = { name: e.name, colors: [...e.colors] }
+  }
+  return result
+}
+
+/** Seed les effets taille en échantillonnant les fonctions getShape en profils */
+function seedSizeEffects(nameOverrides: Record<string, string> = {}): Record<string, AdminSizeEffect> {
+  const result: Record<string, AdminSizeEffect> = {}
+  for (const [id, e] of Object.entries(DEFAULT_SIZE_EFFECTS)) {
+    const profile = Array.from({ length: SIZE_SAMPLES }, (_, i) =>
+      e.getShape(i / (SIZE_SAMPLES - 1))
+    )
+    result[id] = { name: nameOverrides[id] ?? e.name, profile }
+  }
+  return result
+}
+
 /* ── Load from server ── */
 
 export async function loadAdminData() {
   try {
     const res = await fetch('/admin-data.json?' + Date.now())
     const data = await res.json()
-    console.log('[admin-data] loaded from server:', JSON.stringify(data).slice(0, 200))
     const merged = { ...EMPTY, ...data }
+    // Premier lancement : seed les effets depuis le code
+    if (!merged.effectsInitialized) {
+      merged.colorEffects = { ...seedColorEffects(), ...merged.colorEffects }
+      merged.effectsInitialized = true
+    }
+    // Migration : si sizeEffects absent, seed depuis le code + migrer sizeEffectNames
+    if (!merged.sizeEffects || Object.keys(merged.sizeEffects).length === 0) {
+      merged.sizeEffects = seedSizeEffects(merged.sizeEffectNames ?? {})
+    }
+    // Nettoyer l'ancien champ sizeEffectNames (absorbé dans sizeEffects)
+    delete merged.sizeEffectNames
     setAdminData(merged)
     setSavedAdminData(JSON.parse(JSON.stringify(merged)))
-  } catch (err) {
-    console.error('[admin-data] load failed:', err)
-    setAdminData({ ...EMPTY })
-    setSavedAdminData({ ...EMPTY })
+  } catch {
+    const seeded = {
+      ...EMPTY,
+      effectsInitialized: true,
+      colorEffects: seedColorEffects(),
+      sizeEffects: seedSizeEffects(),
+    }
+    setAdminData(seeded)
+    setSavedAdminData(JSON.parse(JSON.stringify(seeded)))
   }
   setLoaded(true)
 }
@@ -61,14 +99,11 @@ export async function loadAdminData() {
 
 export async function saveAdminData(): Promise<boolean> {
   try {
-    const payload = JSON.stringify(adminData())
-    console.log('[admin-data] saving:', payload.slice(0, 200))
     const res = await fetch('/api/save-admin', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: payload,
+      body: JSON.stringify(adminData()),
     })
-    console.log('[admin-data] save response:', res.status)
     if (res.ok) {
       setSavedAdminData(JSON.parse(JSON.stringify(adminData())))
     }
@@ -100,75 +135,14 @@ export function adminRemoveColorEffect(id: string) {
   })
 }
 
-export function adminHideColorEffect(id: string) {
-  setAdminData(d => ({
-    ...d,
-    hiddenColorEffects: d.hiddenColorEffects.includes(id)
-      ? d.hiddenColorEffects
-      : [...d.hiddenColorEffects, id],
-  }))
-}
-
-export function adminUnhideColorEffect(id: string) {
-  setAdminData(d => ({
-    ...d,
-    hiddenColorEffects: d.hiddenColorEffects.filter(h => h !== id),
-  }))
-}
-
-/* ── Mutations — Size Effect Names ── */
+/* ── Mutations — Size Effects ── */
 
 export function adminRenameSizeEffect(id: string, name: string) {
-  if (!name) {
-    // Reset : supprimer l'override
-    setAdminData(d => {
-      const { [id]: _, ...rest } = d.sizeEffectNames
-      return { ...d, sizeEffectNames: rest }
-    })
-  } else {
-    setAdminData(d => ({ ...d, sizeEffectNames: { ...d.sizeEffectNames, [id]: name } }))
-  }
-}
-
-/* ── Mutations — Emojis ── */
-
-export function adminAddEmoji(emoji: AdminEmoji) {
-  setAdminData(d => ({ ...d, emojis: [...d.emojis, emoji] }))
-}
-
-export function adminRemoveEmoji(id: string) {
-  setAdminData(d => ({ ...d, emojis: d.emojis.filter(e => e.id !== id) }))
-}
-
-export function adminUpdateEmoji(id: string, updates: Partial<AdminEmoji>) {
-  setAdminData(d => ({
-    ...d,
-    emojis: d.emojis.map(e => e.id === id ? { ...e, ...updates } : e),
-  }))
-}
-
-export function adminToggleHideEmoji(id: string) {
   setAdminData(d => {
-    const hidden = d.hiddenEmojis.includes(id)
-      ? d.hiddenEmojis.filter(h => h !== id)
-      : [...d.hiddenEmojis, id]
-    return { ...d, hiddenEmojis: hidden }
+    const existing = d.sizeEffects[id]
+    if (!existing) return d
+    return { ...d, sizeEffects: { ...d.sizeEffects, [id]: { ...existing, name } } }
   })
-}
-
-export function adminIsEmojiHidden(id: string): boolean {
-  return adminData().hiddenEmojis.includes(id)
-}
-
-export function adminRenameEmoji(id: string, label: string) {
-  if (!label) {
-    setAdminData(d => {
-      const { [id]: _, ...rest } = d.emojiOverrides
-      return { ...d, emojiOverrides: rest }
-    })
-  } else {
-    setAdminData(d => ({ ...d, emojiOverrides: { ...d.emojiOverrides, [id]: { label } } }))
-  }
 }
 
 /* ── Mutations — CSS ── */

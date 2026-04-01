@@ -167,10 +167,10 @@ export function MathFunction(props: Props) {
       </div>
 
       <div class="math-btn-grid">
-        <For each={FUNC_BUTTONS}>{(btn) => <button class="math-btn math-btn-func" onClick={() => insertAtCursor(btn.insert)}>{btn.label}</button>}</For>
+        <For each={FUNC_BUTTONS}>{(btn) => <button class="math-btn math-btn-func" onMouseDown={(e) => e.preventDefault()} onClick={() => insertAtCursor(btn.insert)}>{btn.label}</button>}</For>
       </div>
       <div class="math-btn-grid">
-        <For each={OP_BUTTONS}>{(btn) => <button class="math-btn math-btn-op" onClick={() => insertAtCursor(btn.insert)}>{btn.label}</button>}</For>
+        <For each={OP_BUTTONS}>{(btn) => <button class="math-btn math-btn-op" onMouseDown={(e) => e.preventDefault()} onClick={() => insertAtCursor(btn.insert)}>{btn.label}</button>}</For>
       </div>
 
       <div class="math-params">

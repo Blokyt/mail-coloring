@@ -44,5 +44,9 @@
   "--toolbar-pad": 6,
   "--header-pad": 8,
   "--logo-size": 500,
-  "--logo-opacity": 1
+  "--logo-opacity": 2,
+  "--header-logo-height": 80,
+  "--header-logo-opacity": 100,
+  "--header-logo-margin-top": 0,
+  "--header-logo-margin-right": 0
 }

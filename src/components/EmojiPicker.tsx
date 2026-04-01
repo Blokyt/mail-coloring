@@ -1,67 +1,63 @@
 import { createSignal, For, Show } from 'solid-js'
 import { Portal } from 'solid-js/web'
-import { getBaseEmojis, getPersoEmojis, addPersoEmoji, removePersoEmoji, toggleEmojiFavorite, isEmojiFavorite, getEmojiFavoritesList, getAllEmojis, type EmojiEntry } from '../stores/emojis'
+
+/* ── Emojis intégrés par catégorie ── */
+
+const EMOJI_CATEGORIES: { name: string; emojis: string[] }[] = [
+  { name: 'Populaires', emojis: ['😀','😂','🥰','😎','🤩','😭','🔥','✨','❤️','💯','👍','👏','🎉','🎊','💪','🙏'] },
+  { name: 'Visages', emojis: ['😊','😁','😅','🤣','😍','😘','😜','🤔','😏','🥺','😤','😱','🤯','🥳','😈','🤡'] },
+  { name: 'Gestes', emojis: ['👋','👉','👈','☝️','✌️','🤘','🤙','👌','✋','🫶','💅','🙌','👐','🫡','🤝','💀'] },
+  { name: 'Coeurs', emojis: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','💖','💝','💕','❤️‍🔥','💔','♥️','🫀','💗'] },
+  { name: 'Nature', emojis: ['🌸','🌹','🌺','🌻','🌿','🍃','🌳','🍀','🌈','⭐','🌙','☀️','🦋','🐝','🌊','🍂'] },
+  { name: 'Nourriture', emojis: ['🧀','🍕','🍔','🌮','🍰','🍩','🍪','☕','🍷','🍺','🫓','🍫','🧁','🥐','🍓','🍉'] },
+  { name: 'Fete', emojis: ['🎉','🎊','🎈','🎁','🎄','🎃','🎆','🎇','🪅','🎵','🎶','🎤','🎸','🥂','🍾','🎭'] },
+  { name: 'Sport', emojis: ['⚽','🏀','🎾','🏐','🎿','🏔️','⛰️','🏄','🚴','🧗','🏕️','🧶','🎯','🏆','🥇','🎮'] },
+  { name: 'Symboles', emojis: ['✅','❌','⚡','💡','📌','🔗','📣','🚀','💎','👑','🪶','🎨','📝','⚠️','♻️','🧚'] },
+  { name: 'Animaux', emojis: ['🐱','🐶','🐼','🦊','🐸','🐵','🦄','🐝','🤠','🐷','🐮','🐔','🐙','🦀','🐢','🦋'] },
+]
+
+/* ── Stockage local des favoris et récents ── */
+
+const FAVS_KEY = 'artlequin_emoji_favs'
+const RECENTS_KEY = 'artlequin_emoji_recents'
+const MAX_RECENTS = 16
+
+function loadList(key: string): string[] {
+  try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : [] } catch { return [] }
+}
+function saveList(key: string, list: string[]) { localStorage.setItem(key, JSON.stringify(list)) }
+
+const [favs, setFavs] = createSignal<string[]>(loadList(FAVS_KEY))
+const [recents, setRecents] = createSignal<string[]>(loadList(RECENTS_KEY))
+
+function toggleFav(emoji: string) {
+  const updated = favs().includes(emoji) ? favs().filter(e => e !== emoji) : [...favs(), emoji]
+  setFavs(updated); saveList(FAVS_KEY, updated)
+}
+
+function pushRecent(emoji: string) {
+  const updated = [emoji, ...recents().filter(e => e !== emoji)].slice(0, MAX_RECENTS)
+  setRecents(updated); saveList(RECENTS_KEY, updated)
+}
+
+export function getEmojiFavorites(): string[] { return favs() }
+export function getEmojiRecents(): string[] { return recents() }
+
+/* ── Composant ── */
 
 interface Props {
   onSelect: (emoji: string) => void
   selected?: string
 }
 
-function EmojiButton(props: {
-  entry: EmojiEntry
-  selected?: string
-  onSelect: (emoji: string) => void
-  showRemove?: boolean
-  onRemove?: () => void
-}) {
-  const fav = () => isEmojiFavorite(props.entry.emoji)
-
-  return (
-    <div class={`emoji-picker-item ${props.showRemove ? 'emoji-picker-item-perso' : ''}`}>
-      <button
-        class={`emoji-picker-btn ${props.selected === props.entry.emoji ? 'active' : ''} ${fav() ? 'is-fav' : ''}`}
-        title={props.entry.label}
-        onClick={() => props.onSelect(props.entry.emoji)}
-      >
-        {props.entry.emoji}
-      </button>
-      <button
-        class={`emoji-fav-btn ${fav() ? 'is-fav' : ''}`}
-        onClick={(e) => { e.stopPropagation(); toggleEmojiFavorite(props.entry.emoji) }}
-        title={fav() ? 'Retirer des favoris' : 'Ajouter aux favoris'}
-      >
-        ★
-      </button>
-      <Show when={props.showRemove}>
-        <button
-          class="emoji-picker-remove"
-          onClick={(e) => { e.stopPropagation(); props.onRemove?.() }}
-          title="Retirer"
-        >✕</button>
-      </Show>
-    </div>
-  )
-}
-
 export function EmojiPicker(props: Props) {
   const [open, setOpen] = createSignal(false)
-  const [adding, setAdding] = createSignal(false)
-  const [newEmoji, setNewEmoji] = createSignal('')
   const [pos, setPos] = createSignal({ top: 0, left: 0 })
   let triggerRef: HTMLButtonElement | undefined
-  let addInputRef: HTMLInputElement | undefined
 
   const handleSelect = (emoji: string) => {
     props.onSelect(emoji)
-    setOpen(false)
-  }
-
-  const handleAdd = () => {
-    const e = newEmoji().trim()
-    if (!e) return
-    addPersoEmoji(e, e)
-    setNewEmoji('')
-    setAdding(false)
+    pushRecent(emoji)
   }
 
   const toggle = () => {
@@ -76,12 +72,7 @@ export function EmojiPicker(props: Props) {
     }
   }
 
-  const favoriteEmojis = () => {
-    const favs = getEmojiFavoritesList()
-    if (favs.length === 0) return []
-    const all = getAllEmojis()
-    return favs.map(f => all.find(e => e.emoji === f)).filter(Boolean) as EmojiEntry[]
-  }
+  const isFav = (emoji: string) => favs().includes(emoji)
 
   return (
     <div class="emoji-picker-wrap">
@@ -99,81 +90,62 @@ export function EmojiPicker(props: Props) {
           <div class="emoji-picker" style={{ position: 'fixed', top: `${pos().top}px`, left: `${pos().left}px` }}>
 
             {/* Favoris */}
-            <Show when={favoriteEmojis().length > 0}>
+            <Show when={favs().length > 0}>
               <div class="emoji-picker-section">
-                <div class="emoji-picker-label">★ Favoris</div>
+                <div class="emoji-picker-label">Favoris</div>
                 <div class="emoji-picker-grid">
-                  <For each={favoriteEmojis()}>
-                    {(entry) => (
-                      <button
-                        class={`emoji-picker-btn ${props.selected === entry.emoji ? 'active' : ''}`}
-                        title={entry.label}
-                        onClick={() => handleSelect(entry.emoji)}
-                      >
-                        {entry.emoji}
-                      </button>
+                  <For each={favs()}>
+                    {(emoji) => (
+                      <div class="emoji-picker-item">
+                        <button class="emoji-picker-btn is-fav" onClick={() => handleSelect(emoji)}>{emoji}</button>
+                        <button class="emoji-picker-unfav" onClick={() => toggleFav(emoji)}>x</button>
+                      </div>
                     )}
                   </For>
                 </div>
               </div>
             </Show>
 
-            {/* Base */}
-            <div class="emoji-picker-section">
-              <div class="emoji-picker-label">Base</div>
-              <div class="emoji-picker-grid">
-                <For each={getBaseEmojis()}>
-                  {(entry) => (
-                    <EmojiButton entry={entry} selected={props.selected} onSelect={handleSelect} />
-                  )}
-                </For>
-              </div>
-            </div>
-
-            {/* Perso */}
-            <Show when={getPersoEmojis().length > 0}>
+            {/* Récents */}
+            <Show when={recents().length > 0}>
               <div class="emoji-picker-section">
-                <div class="emoji-picker-label">Perso</div>
+                <div class="emoji-picker-label">Recents</div>
                 <div class="emoji-picker-grid">
-                  <For each={getPersoEmojis()}>
-                    {(entry) => (
-                      <EmojiButton
-                        entry={entry}
-                        selected={props.selected}
-                        onSelect={handleSelect}
-                        showRemove
-                        onRemove={() => removePersoEmoji(entry.id)}
-                      />
+                  <For each={recents()}>
+                    {(emoji) => (
+                      <div class="emoji-picker-item">
+                        <button class="emoji-picker-btn" onClick={() => handleSelect(emoji)}>{emoji}</button>
+                        <Show when={!isFav(emoji)}>
+                          <button class="emoji-picker-fav-btn" onClick={() => toggleFav(emoji)}>+</button>
+                        </Show>
+                      </div>
                     )}
                   </For>
                 </div>
               </div>
             </Show>
 
-            {/* Ajouter */}
-            <Show when={!adding()}>
-              <button class="emoji-picker-add-btn" onClick={() => {
-                setAdding(true)
-                requestAnimationFrame(() => addInputRef?.focus())
-              }}>
-                + Ajouter
-              </button>
-            </Show>
+            {/* Catégories */}
+            <For each={EMOJI_CATEGORIES}>
+              {(cat) => (
+                <div class="emoji-picker-section">
+                  <div class="emoji-picker-label">{cat.name}</div>
+                  <div class="emoji-picker-grid">
+                    <For each={cat.emojis}>
+                      {(emoji) => (
+                        <div class="emoji-picker-item">
+                          <button class={`emoji-picker-btn ${isFav(emoji) ? 'is-fav' : ''}`} onClick={() => handleSelect(emoji)}>{emoji}</button>
+                          <Show when={!isFav(emoji)}>
+                            <button class="emoji-picker-fav-btn" onClick={() => toggleFav(emoji)}>+</button>
+                          </Show>
+                        </div>
+                      )}
+                    </For>
+                  </div>
+                </div>
+              )}
+            </For>
 
-            <Show when={adding()}>
-              <div class="emoji-picker-add-form">
-                <input
-                  ref={addInputRef}
-                  class="emoji-picker-add-input"
-                  type="text"
-                  value={newEmoji()}
-                  onInput={(e) => setNewEmoji(e.currentTarget.value)}
-                  placeholder="😀"
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); if (e.key === 'Escape') setAdding(false) }}
-                />
-                <button class="btn btn-lavender" style={{ padding: '4px 10px', "font-size": 'var(--font-sm)' }} onClick={handleAdd}>OK</button>
-              </div>
-            </Show>
           </div>
         </Portal>
       </Show>

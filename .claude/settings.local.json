@@ -35,7 +35,21 @@
       "mcp__plugin_playwright_playwright__browser_run_code",
       "mcp__plugin_playwright_playwright__browser_press_key",
       "Bash(wc -l /c/Users/bloki/Desktop/Programmation/PERSO/mail-coloring/src/**/*.tsx /c/Users/bloki/Desktop/Programmation/PERSO/mail-coloring/src/**/*.ts)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/)",
+      "Bash(grep -r \"unused\\\\|FIXME\\\\|TODO\\\\|BUG\\\\|HACK\" /c/Users/bloki/Desktop/Programmation/PERSO/mail-coloring/src --include=*.tsx --include=*.ts)",
+      "Bash(grep -n \"adminData\\\\|getEffective\\\\|colorEffects\" /c/Users/bloki/Desktop/Programmation/PERSO/mail-coloring/src/components/*.tsx)",
+      "mcp__plugin_supabase_supabase__list_organizations",
+      "Bash(npm run:*)",
+      "mcp__browsermcp__browser_navigate",
+      "Bash(taskkill //F //IM chrome.exe)",
+      "WebSearch",
+      "WebFetch(domain:www.goodemailcode.com)",
+      "WebFetch(domain:stigmortenmyre.no)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.emailonacid.com)",
+      "WebFetch(domain:www.litmus.com)",
+      "WebFetch(domain:www.hteumeuleu.com)",
+      "Bash(xargs grep:*)"
     ]
   }
 }

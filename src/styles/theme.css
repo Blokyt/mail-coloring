@@ -6,13 +6,18 @@
   --mint: #86efac;
   --soft-black: #374151;
   --white: #ffffff;
-  --bg: #faf9f7;
+  --bg: #F1E3DC;
   --muted: #9ca3af;
   --separator: #e5e7eb;
 
-  /* Logo */
+  /* Logo watermark */
   --logo-size: 500px;
   --logo-opacity: 0.06;
+  /* Logo header */
+  --header-logo-height: 36px;
+  --header-logo-opacity: 1;
+  --header-logo-margin-top: 0px;
+  --header-logo-margin-right: 0px;
 
   /* Bordures — UNE SEULE épaisseur pour tout */
   --border: 3px;

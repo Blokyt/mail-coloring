@@ -1,9 +1,9 @@
 import { For, createSignal, createEffect, Show } from 'solid-js'
-import { COLOR_EFFECTS, SIZE_EFFECTS, type ComposedEffectData } from '../engine/effects'
-import { sparklineFromFn } from '../engine/sparkline'
+import { sampleProfile, type ComposedEffectData } from '../engine/effects'
+import { sparklineFromProfile } from '../engine/sparkline'
 import { EffectPreview } from './EffectPreview'
 import {
-  getPersoEffects, toggleFavorite, isFavorite,
+  getBaseEffects, getPersoEffects, toggleFavorite, isFavorite,
   addPersoEffect, removePersoEffect,
 } from '../stores/workshops'
 import { baseSize, sizeAmplitude } from '../stores/editor'
@@ -45,13 +45,13 @@ function Section(props: { title: string; defaultOpen?: boolean; children: any })
 }
 
 /** Carte d'effet couleur */
-function ColorEffectCard(props: { id: string; name: string }) {
+function ColorEffectCard(props: { id: string; name: string; colors: string[] }) {
   const fav = () => isFavorite(props.id, 'base')
   return (
     <div class="catalog-card">
       <div class="catalog-card-header">
         <span class="catalog-card-name">
-          <EffectPreview text={props.name} colorEffectId={props.id} options={{ baseSize: baseSize(), amplitude: sizeAmplitude() }} />
+          <EffectPreview text={props.name} customColors={props.colors} options={{ baseSize: baseSize(), amplitude: sizeAmplitude() }} />
         </span>
         <button class={`catalog-fav ${fav() ? 'is-fav' : ''}`} onClick={() => toggleFavorite(props.id, 'base')} title={fav() ? 'Retirer des favoris' : 'Ajouter aux favoris'}>
           {fav() ? '\u2605' : '\u2606'}
@@ -61,7 +61,7 @@ function ColorEffectCard(props: { id: string; name: string }) {
         <For each={PREVIEW_WORDS}>
           {(word) => (
             <div class="catalog-preview-item">
-              <EffectPreview text={word} colorEffectId={props.id} />
+              <EffectPreview text={word} customColors={props.colors} />
             </div>
           )}
         </For>
@@ -74,10 +74,9 @@ function ColorEffectCard(props: { id: string; name: string }) {
 }
 
 /** Carte d'effet taille — nom plain text + sparkline + previews normalisees */
-function SizeEffectCard(props: { id: string; name: string }) {
+function SizeEffectCard(props: { id: string; name: string; profile: number[] }) {
   const fav = () => isFavorite(props.id, 'base')
-  const se = SIZE_EFFECTS[props.id]
-  const path = () => se ? sparklineFromFn((t) => se.getShape(t)) : ''
+  const path = () => sparklineFromProfile(props.profile)
   const accent = () => SIZE_ACCENTS[props.id] ?? 'var(--lavender)'
 
   return (
@@ -95,7 +94,7 @@ function SizeEffectCard(props: { id: string; name: string }) {
         <For each={PREVIEW_WORDS}>
           {(word) => (
             <div class="catalog-preview-item">
-              <EffectPreview text={word} sizeEffectId={props.id} options={{ baseSize: baseSize(), amplitude: sizeAmplitude() }} />
+              <EffectPreview text={word} sizeProfile={props.profile} options={{ baseSize: baseSize(), amplitude: sizeAmplitude() }} />
             </div>
           )}
         </For>
@@ -223,9 +222,9 @@ export function EffectsCatalog(props: Props) {
           <Show when={tab() === 'base'}>
             <Section title="Couleur" defaultOpen={true}>
               <div class="catalog-grid">
-                <For each={Object.entries(COLOR_EFFECTS)}>
-                  {([id, effect]) => (
-                    <ColorEffectCard id={id} name={effect.name} />
+                <For each={getBaseEffects().filter(e => e.type === 'color' && (e.colorMode ?? 'text') === 'text')}>
+                  {(effect) => (
+                    <ColorEffectCard id={effect.id} name={effect.label} colors={effect.colors!} />
                   )}
                 </For>
               </div>
@@ -233,9 +232,9 @@ export function EffectsCatalog(props: Props) {
 
             <Section title="Taille" defaultOpen={false}>
               <div class="catalog-grid">
-                <For each={Object.entries(SIZE_EFFECTS)}>
-                  {([id, effect]) => (
-                    <SizeEffectCard id={id} name={effect.name} />
+                <For each={getBaseEffects().filter(e => e.type === 'size')}>
+                  {(effect) => (
+                    <SizeEffectCard id={effect.id} name={effect.label} profile={effect.profile!} />
                   )}
                 </For>
               </div>

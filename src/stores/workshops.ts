@@ -1,5 +1,5 @@
 import { createSignal } from 'solid-js'
-import { COLOR_EFFECTS, SIZE_EFFECTS, getEffectiveColorEffects, getEffectiveBgEffects } from '../engine/effects'
+import { getEffectiveColorEffects, getEffectiveBgEffects } from '../engine/effects'
 import type { ComposedEffectData } from '../engine/effects'
 import { adminData } from './admin-data'
 
@@ -15,7 +15,6 @@ export interface WorkshopEffect {
   label: string
   source: WorkshopSource
   colors?: string[]
-  sizeKey?: string
   profile?: number[]
   /** true = profil contient des offsets bruts en px (MathFunction). false/absent = profil [0,1] (ShapeCanvas) */
   rawProfile?: boolean
@@ -123,7 +122,7 @@ export function getBaseEffects(): WorkshopEffect[] {
   const favs = baseFavIds()
   const ad = adminData()
   // Effets couleur texte
-  const effectiveColors = getEffectiveColorEffects(ad.colorEffects, ad.hiddenColorEffects)
+  const effectiveColors = getEffectiveColorEffects(ad.colorEffects)
   const colors: WorkshopEffect[] = Object.entries(effectiveColors).map(([id, e]) => ({
     id,
     type: 'color' as const,
@@ -134,7 +133,7 @@ export function getBaseEffects(): WorkshopEffect[] {
     isFavorite: favs.has(id),
   }))
   // Effets couleur fond (auto-générés)
-  const bgEffects = getEffectiveBgEffects(ad.colorEffects, ad.hiddenColorEffects)
+  const bgEffects = getEffectiveBgEffects(ad.colorEffects)
   const bgColors: WorkshopEffect[] = Object.entries(bgEffects).map(([id, e]) => ({
     id,
     type: 'color' as const,
@@ -144,13 +143,13 @@ export function getBaseEffects(): WorkshopEffect[] {
     colorMode: 'bg' as const,
     isFavorite: favs.has(id),
   }))
-  // Effets taille : noms overrides par admin
-  const sizes: WorkshopEffect[] = Object.entries(SIZE_EFFECTS).map(([id, e]) => ({
+  // Effets taille depuis admin data (profils + noms)
+  const sizes: WorkshopEffect[] = Object.entries(ad.sizeEffects ?? {}).map(([id, e]) => ({
     id,
     type: 'size' as const,
-    label: ad.sizeEffectNames[id] ?? e.name,
+    label: e.name,
     source: 'base' as const,
-    sizeKey: id,
+    profile: e.profile,
     isFavorite: favs.has(id),
   }))
   return [...colors, ...bgColors, ...sizes]

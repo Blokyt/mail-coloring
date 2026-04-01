@@ -1,4 +1,4 @@
-import { SIZE_EFFECTS, interpolateProfile } from './effects'
+import { sampleProfile } from './effects'
 import type { WorkshopEffect } from '../stores/workshops'
 
 const DEFAULT_SAMPLES = 20
@@ -19,22 +19,17 @@ export function sparklineFromFn(
   return valuesToPath(values)
 }
 
+/** Genere un sparkline depuis un profil stocke */
+export function sparklineFromProfile(profile: number[]): string {
+  return sparklineFromFn((t) => sampleProfile(profile, t))
+}
+
 /**
  * Genere un path SVG sparkline depuis un WorkshopEffect.
  */
 export function sparklineFromEffect(effect: WorkshopEffect): string {
-  if (effect.type === 'size' && SIZE_EFFECTS[effect.id]) {
-    return sparklineFromFn((t) => SIZE_EFFECTS[effect.id].getShape(t))
-  }
-  if (effect.type === 'custom-size' && effect.profile) {
-    const profile = effect.profile
-    return sparklineFromFn((t) => {
-      const pIdx = t * (profile.length - 1)
-      const lo = Math.floor(pIdx)
-      const hi = Math.min(lo + 1, profile.length - 1)
-      const frac = pIdx - lo
-      return profile[lo] * (1 - frac) + profile[hi] * frac
-    })
+  if ((effect.type === 'size' || effect.type === 'custom-size') && effect.profile) {
+    return sparklineFromProfile(effect.profile)
   }
   return ''
 }

@@ -1,4 +1,5 @@
-import { applyEffects, applySizeProfile, applyComposedEffect, type EffectOptions, type ComposedEffectData } from '../engine/effects'
+import { applyEffects, applySizeProfile, applyComposedEffect, type EffectOptions, type ComposedEffectData, type ColorMode } from '../engine/effects'
+import { adminData } from '../stores/admin-data'
 
 interface Props {
   text: string
@@ -25,13 +26,31 @@ function applyCustomColors(text: string, colors: string[]): string {
   }).join('')
 }
 
+/** Résout un ID d'effet couleur depuis adminData (source unique de vérité) */
+function resolveColorConfig(id: string | null | undefined): { colors: string[], mode?: ColorMode } | null {
+  if (!id) return null
+  const e = adminData().colorEffects[id]
+  return e ? { colors: e.colors } : null
+}
+
+/** Résout un ID d'effet taille depuis adminData (source unique de vérité) */
+function resolveSizeProfile(id: string | null | undefined): number[] | null {
+  if (!id) return null
+  return adminData().sizeEffects?.[id]?.profile ?? null
+}
+
 export function EffectPreview(props: Props) {
   const opts = () => ({ ...DEFAULT_OPTS, ...props.options })
 
   const html = () => {
     // Composed effect
     if (props.composedData) {
-      return applyComposedEffect(props.text, props.composedData, opts())
+      let resolvedColors: string[] | null = null
+      if (props.composedData.colorEffectRef) {
+        resolvedColors = adminData().colorEffects[props.composedData.colorEffectRef]?.colors ?? null
+      }
+      const resolvedSize = resolveSizeProfile(props.composedData.sizeEffectRef)
+      return applyComposedEffect(props.text, props.composedData, opts(), resolvedColors, null, resolvedSize)
     }
     // Custom colors (palette cycling)
     if (props.customColors && props.customColors.length > 0) {
@@ -40,13 +59,13 @@ export function EffectPreview(props: Props) {
     // Custom size profile
     const profile = props.sizeProfile ?? props.customProfile
     if (profile && profile.length > 0) {
-      return applySizeProfile(props.text, profile, opts(), props.colorEffectId ?? null, props.rawProfile)
+      return applySizeProfile(props.text, profile, opts(), resolveColorConfig(props.colorEffectId), props.rawProfile)
     }
     // Predefined effects
     return applyEffects(
       props.text,
-      props.colorEffectId ?? null,
-      props.sizeEffectId ?? null,
+      resolveColorConfig(props.colorEffectId),
+      resolveSizeProfile(props.sizeEffectId),
       opts(),
     )
   }

@@ -1,10 +1,10 @@
 import { For, Show, createSignal } from 'solid-js'
 import { Portal } from 'solid-js/web'
-import { baseSize, setBaseSize, sizeAmplitude } from '../stores/editor'
+import { baseSize, setBaseSize } from '../stores/editor'
 import { sizeFavorites, addSizeFavorite, removeSizeFavorite } from '../stores/workshops'
-import { getEmojiFavoritesList } from '../stores/emojis'
+import { getEmojiFavorites, getEmojiRecents } from './EmojiPicker'
 import { getToolbarColors, getActivePalette, activePaletteId, removeToolbarColor, addToolbarColor } from '../stores/palettes'
-import { applyInlineStyle, execFormatCommand, applyLink, getSelectedText, replaceSelectionWithHtml, refreshSizeEffects } from './Editor'
+import { applyInlineStyle, execFormatCommand, applyLink, getSelectedText, replaceSelectionWithHtml, refreshSizeEffects, resizeLiveSelection } from './Editor'
 import { updateBuffer, getBuffer, setPreview } from './Header'
 import { EffectsCatalog } from './EffectsCatalog'
 import type { CatalogTab } from './EffectsCatalog'
@@ -38,6 +38,7 @@ function SizeControl(props: { value: number; onChange: (v: number) => void; onDr
     const v = parseInt(editVal())
     if (v && v >= 6 && v <= 200) props.onChange(v)
     setEditing(false)
+    setPreview(null)
   }
 
   const selectSize = (size: number) => {
@@ -169,7 +170,7 @@ export function ToolbarPanel() {
 
   return (
     <>
-      <div class="toolbar-panel">
+      <div class="toolbar-panel" onMouseDown={(e) => { if ((e.target as HTMLElement).tagName !== 'INPUT') e.preventDefault() }}>
         {/* Row 1: Format + Colors */}
         <div class="toolbar-row">
           <button class="btn-icon" onClick={() => { execFormatCommand('bold'); updateBuffer({ bold: !getBuffer().bold }) }}><b>B</b></button>
@@ -189,19 +190,23 @@ export function ToolbarPanel() {
               requestAnimationFrame(() => { linkInputRef?.focus(); linkInputRef?.select() })
             }}
           >🔗</button>
-          <EmojiPicker onSelect={(emoji) => replaceSelectionWithHtml(emoji)} />
-          <Show when={getEmojiFavoritesList().length > 0}>
+          <EmojiPicker onSelect={(emoji) => {
+            const size = getBuffer().fontSize || baseSize()
+            replaceSelectionWithHtml(`<span style="font-size:${size}px">${emoji}</span>`)
+          }} />
+          <Show when={getEmojiFavorites().length > 0 || getEmojiRecents().length > 0}>
             <div class="fav-pills">
-              <For each={getEmojiFavoritesList()}>
-                {(emoji) => (
-                  <button
-                    class="fav-pill emoji-fav-pill"
-                    title={`Inserer ${emoji}`}
-                    onClick={() => replaceSelectionWithHtml(emoji)}
-                  >
-                    {emoji}
-                  </button>
-                )}
+              <For each={getEmojiFavorites()}>
+                {(emoji) => {
+                  const insert = () => { const s = getBuffer().fontSize || baseSize(); replaceSelectionWithHtml(`<span style="font-size:${s}px">${emoji}</span>`) }
+                  return <button class="fav-pill emoji-fav-pill" title={emoji} onClick={insert}>{emoji}</button>
+                }}
+              </For>
+              <For each={getEmojiRecents().filter(e => !getEmojiFavorites().includes(e)).slice(0, 5)}>
+                {(emoji) => {
+                  const insert = () => { const s = getBuffer().fontSize || baseSize(); replaceSelectionWithHtml(`<span style="font-size:${s}px">${emoji}</span>`) }
+                  return <button class="fav-pill emoji-fav-pill emoji-recent-pill" title={emoji} onClick={insert}>{emoji}</button>
+                }}
               </For>
             </div>
           </Show>
@@ -227,7 +232,7 @@ export function ToolbarPanel() {
                     />
                     <Show when={isSelected()}>
                       <button class="swatch-remove" onClick={(e) => { e.stopPropagation(); removeToolbarColor(c.hex); setSelectedSwatch(null) }}>
-                        <span class="swatch-remove-x" />
+x
                       </button>
                     </Show>
                   </div>
@@ -255,8 +260,8 @@ export function ToolbarPanel() {
           <div class="separator" />
           <SizeControl
             value={baseSize()}
-            onDrag={(v) => { setBaseSize(v); updateBuffer({ fontSize: v }); refreshSizeEffects(v, sizeAmplitude()) }}
-            onChange={(v) => { setBaseSize(v); updateBuffer({ fontSize: v }); refreshSizeEffects(v, sizeAmplitude()) }}
+            onDrag={(v) => { setBaseSize(v); updateBuffer({ fontSize: v }); resizeLiveSelection(v); refreshSizeEffects(v) }}
+            onChange={(v) => { setBaseSize(v); updateBuffer({ fontSize: v }); resizeLiveSelection(v); refreshSizeEffects(v) }}
             onAddFav={() => addSizeFavorite(baseSize())}
           />
           <Show when={sizeFavorites().length > 0}>
@@ -266,7 +271,7 @@ export function ToolbarPanel() {
                   <div class="size-fav-chip">
                     <button
                       class="size-fav-value"
-                      onClick={() => { setBaseSize(size); updateBuffer({ fontSize: size }) }}
+                      onClick={() => { setBaseSize(size); updateBuffer({ fontSize: size }); resizeLiveSelection(size); refreshSizeEffects(size) }}
                       onMouseEnter={() => setPreview({ fontSize: size })}
                       onMouseLeave={() => setPreview(null)}
                     >

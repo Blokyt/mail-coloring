@@ -1,8 +1,9 @@
 import { onMount, onCleanup, createSignal } from 'solid-js'
-import { activeColorEffect, activeSizeEffect, baseSize, sizeAmplitude } from '../stores/editor'
+import { activeColorEffect, activeSizeEffect, baseSize } from '../stores/editor'
 import { initUndoSystem, recordOperation, recordTypingChar, flushTyping, performUndo, performRedo } from '../stores/undo-redo'
 import { activeWord, setActiveWord } from '../stores/word-inspect'
-import { COLOR_EFFECTS, SIZE_EFFECTS } from '../engine/effects'
+import { sampleProfile, cleanForOutlook } from '../engine/effects'
+import { adminData } from '../stores/admin-data'
 import { getBuffer } from './Header'
 
 let editorEl: HTMLDivElement | undefined
@@ -16,7 +17,7 @@ export function getAllEditorHtml(): string {
 }
 
 export function getAllEditorText(): string {
-  return editorEl?.textContent?.trim() || ''
+  return (editorEl?.textContent?.trim() || '').replace(/\u00A0/g, ' ')
 }
 
 export function saveSelection() {
@@ -29,12 +30,27 @@ export function saveSelection() {
 }
 
 export function restoreSelection(): boolean {
-  if (!savedRange) return false
-  const sel = window.getSelection()
-  if (!sel) return false
-  sel.removeAllRanges()
-  sel.addRange(savedRange)
-  return true
+  if (savedRange) {
+    const sel = window.getSelection()
+    if (!sel) return false
+    sel.removeAllRanges()
+    sel.addRange(savedRange)
+    return true
+  }
+  // Pas de sélection sauvée → placer le curseur à la fin de l'éditeur
+  if (editorEl) {
+    editorEl.focus()
+    const sel = window.getSelection()
+    if (sel) {
+      const range = document.createRange()
+      range.selectNodeContents(editorEl)
+      range.collapse(false)
+      sel.removeAllRanges()
+      sel.addRange(range)
+      return true
+    }
+  }
+  return false
 }
 
 export function getSelectedText(): string {
@@ -89,10 +105,81 @@ export function applyInlineStyle(prop: string, value: string) {
   const labels: Record<string, string> = { color: `Couleur : ${value}`, backgroundColor: `Fond : ${value}`, fontSize: `Taille : ${value}`, fontFamily: `Police : ${value.split(',')[0]}` }
   const op = recordOperation(labels[prop] || `Style : ${prop}`, 'format')
   if (prop === 'color') document.execCommand('foreColor', false, value)
-  else if (prop === 'backgroundColor') document.execCommand('hiliteColor', false, value)
-  else if (prop === 'fontSize') {
-    document.execCommand('fontSize', false, '7')
-    editorEl.querySelectorAll('font[size="7"]').forEach(el => { (el as HTMLElement).removeAttribute('size'); (el as HTMLElement).style.fontSize = value })
+  else if (prop === 'backgroundColor') {
+    // Manipulation DOM char-par-char au lieu de execCommand('hiliteColor')
+    // pour que le fond s'applique sur chaque span individuel et suive la taille
+    const range = sel.getRangeAt(0)
+    if (!range.collapsed && editorEl.contains(range.commonAncestorContainer)) {
+      const fragment = range.extractContents()
+      const walker = document.createTreeWalker(fragment, NodeFilter.SHOW_TEXT)
+      const textNodes: Text[] = []
+      while (walker.nextNode()) textNodes.push(walker.currentNode as Text)
+
+      for (const textNode of textNodes) {
+        const text = textNode.textContent || ''
+        const graphemes = [...text]
+        const parent = textNode.parentElement
+
+        // Span single-char existant → modifier directement
+        if (parent && parent.tagName === 'SPAN' && parent !== fragment as unknown as Element
+            && parent.childNodes.length === 1 && graphemes.length === 1
+            && graphemes[0] !== ' ' && graphemes[0] !== '\n' && graphemes[0] !== '\t') {
+          parent.style.backgroundColor = value
+          continue
+        }
+
+        // Cas général — wrapper chaque grapheme
+        const charFrag = document.createDocumentFragment()
+        for (const ch of graphemes) {
+          if (ch === ' ' || ch === '\n' || ch === '\t') {
+            charFrag.appendChild(document.createTextNode(ch))
+          } else {
+            const span = document.createElement('span')
+            span.style.backgroundColor = value
+            span.textContent = ch
+            charFrag.appendChild(span)
+          }
+        }
+        textNode.parentNode?.replaceChild(charFrag, textNode)
+      }
+      range.insertNode(fragment)
+    }
+  } else if (prop === 'fontSize') {
+    // Manipulation DOM char-par-char pour ne pas casser les marqueurs [data-size-effect]
+    const range = sel.getRangeAt(0)
+    if (!range.collapsed && editorEl.contains(range.commonAncestorContainer)) {
+      const fragment = range.extractContents()
+      const walker = document.createTreeWalker(fragment, NodeFilter.SHOW_TEXT)
+      const textNodes: Text[] = []
+      while (walker.nextNode()) textNodes.push(walker.currentNode as Text)
+
+      for (const textNode of textNodes) {
+        const text = textNode.textContent || ''
+        const graphemes = [...text]
+        const parent = textNode.parentElement
+
+        if (parent && parent.tagName === 'SPAN' && parent !== fragment as unknown as Element
+            && parent.childNodes.length === 1 && graphemes.length === 1
+            && graphemes[0] !== ' ' && graphemes[0] !== '\n' && graphemes[0] !== '\t') {
+          parent.style.fontSize = value
+          continue
+        }
+
+        const charFrag = document.createDocumentFragment()
+        for (const ch of graphemes) {
+          if (ch === ' ' || ch === '\n' || ch === '\t') {
+            charFrag.appendChild(document.createTextNode(ch))
+          } else {
+            const span = document.createElement('span')
+            span.style.fontSize = value
+            span.textContent = ch
+            charFrag.appendChild(span)
+          }
+        }
+        textNode.parentNode?.replaceChild(charFrag, textNode)
+      }
+      range.insertNode(fragment)
+    }
   } else if (prop === 'fontFamily') document.execCommand('fontName', false, value)
   op.commit()
   editorEl.focus()
@@ -185,14 +272,23 @@ export function applyColorToSelection(colors: string[], mode: 'text' | 'bg' = 't
   const textNodes: Text[] = []
   while (walker.nextNode()) textNodes.push(walker.currentNode as Text)
 
+  const segmentGraphemes = (s: string) => {
+    if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+      return [...new Intl.Segmenter('fr', { granularity: 'grapheme' }).segment(s)].map(g => g.segment)
+    }
+    return [...s]
+  }
+  const isWS = (ch: string) => ch === ' ' || ch === '\n' || ch === '\t'
+
   let charIdx = 0
   for (const textNode of textNodes) {
     const text = textNode.textContent || ''
+    const graphemes = segmentGraphemes(text)
     const parent = textNode.parentElement
 
-    // Span single-char existant → modifier directement
+    // Span single-grapheme existant → modifier directement
     if (parent && parent.tagName === 'SPAN' && parent !== fragment as unknown as Element
-        && parent.childNodes.length === 1 && text.length === 1 && text.trim().length === 1) {
+        && parent.childNodes.length === 1 && graphemes.length === 1 && !isWS(graphemes[0])) {
       if (mode === 'bg') {
         parent.style.backgroundColor = colors[charIdx % colors.length]
       } else {
@@ -202,10 +298,10 @@ export function applyColorToSelection(colors: string[], mode: 'text' | 'bg' = 't
       continue
     }
 
-    // Cas général
+    // Cas général — split par grapheme
     const charFrag = document.createDocumentFragment()
-    for (const char of text) {
-      if (char === ' ' || char === '\n' || char === '\t') {
+    for (const char of graphemes) {
+      if (isWS(char)) {
         charFrag.appendChild(document.createTextNode(char))
       } else {
         const span = document.createElement('span')
@@ -258,25 +354,38 @@ export function applySizeToSelection(getOffset: (charIdx: number, total: number)
   const textNodes: Text[] = []
   while (walker.nextNode()) textNodes.push(walker.currentNode as Text)
 
+  // Utilise Intl.Segmenter pour splitter en graphemes (gère emojis, accents, etc.)
+  const segment = (s: string) => {
+    if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+      return [...new Intl.Segmenter('fr', { granularity: 'grapheme' }).segment(s)].map(g => g.segment)
+    }
+    return [...s]
+  }
+
+  const isWhitespace = (ch: string) => ch === ' ' || ch === '\n' || ch === '\t'
+
   let total = 0
-  for (const tn of textNodes) for (const ch of (tn.textContent || '')) if (ch !== ' ' && ch !== '\n' && ch !== '\t') total++
+  for (const tn of textNodes) for (const ch of segment(tn.textContent || '')) if (!isWhitespace(ch)) total++
 
   let charIdx = 0
   for (const textNode of textNodes) {
     const text = textNode.textContent || ''
+    const graphemes = segment(text)
     const parent = textNode.parentElement
 
+    // Span single-grapheme existant → modifier fontSize en place
     if (parent && parent.tagName === 'SPAN' && parent !== fragment as unknown as Element
-        && parent.childNodes.length === 1 && text.length === 1 && text.trim().length === 1) {
+        && parent.childNodes.length === 1 && graphemes.length === 1 && !isWhitespace(graphemes[0])) {
       const offset = getOffset(charIdx, total)
       parent.style.fontSize = `${Math.max(8, Math.round(baseSize + offset))}px`
       charIdx++
       continue
     }
 
+    // Cas général : split en spans par grapheme
     const charFrag = document.createDocumentFragment()
-    for (const char of text) {
-      if (char === ' ' || char === '\n' || char === '\t') {
+    for (const char of graphemes) {
+      if (isWhitespace(char)) {
         charFrag.appendChild(document.createTextNode(char))
       } else {
         const offset = getOffset(charIdx, total)
@@ -303,33 +412,59 @@ export function applySizeToSelection(getOffset: (charIdx: number, total: number)
 }
 
 /**
- * Recalcule les tailles de tous les mots marqués [data-size-effect]
- * quand le baseSize change via le slider.
+ * Recalcule les tailles des mots marqués [data-size-effect] DANS la sélection.
+ * L'amplitude de chaque marqueur est PRESERVEE (fixée à l'application de l'effet).
+ * Si rien n'est sélectionné, ne touche à rien.
  */
-export function refreshSizeEffects(newBaseSize: number, newAmplitude: number) {
+export function refreshSizeEffects(newBaseSize: number) {
   if (!editorEl) return
+  const range = savedRange || (() => {
+    const sel = window.getSelection()
+    return sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null
+  })()
+  if (!range || range.collapsed) return
+
   const markers = editorEl.querySelectorAll<HTMLSpanElement>('[data-size-effect]')
-  if (markers.length === 0) return
-
   for (const marker of markers) {
+    if (!range.intersectsNode(marker)) continue
+
     const effectId = marker.dataset.sizeEffect!
-    const sizeEffect = SIZE_EFFECTS[effectId]
-    if (!sizeEffect) continue
+    const profile = adminData().sizeEffects?.[effectId]?.profile
+    if (!profile) continue
 
-    // Mettre à jour les data attributes
+    const amplitude = Number(marker.dataset.amplitude) || 0
     marker.dataset.baseSize = String(newBaseSize)
-    marker.dataset.amplitude = String(newAmplitude)
 
-    // Recalculer chaque char span
     const charSpans = marker.querySelectorAll<HTMLSpanElement>('span[style*="font-size"]')
     const total = charSpans.length
     let charIdx = 0
     for (const span of charSpans) {
       const t = total <= 1 ? 0 : charIdx / (total - 1)
-      const offset = newAmplitude * sizeEffect.getShape(t)
+      const offset = amplitude * sampleProfile(profile, t)
       span.style.fontSize = `${Math.max(8, Math.round(newBaseSize + offset))}px`
       charIdx++
     }
+  }
+}
+
+/**
+ * Met à jour le fontSize en direct sur les spans sélectionnés
+ * qui ne sont PAS dans un marqueur [data-size-effect].
+ * Léger (pas de restructuration DOM, pas d'undo) — conçu pour le drag du slider.
+ */
+export function resizeLiveSelection(newSize: number) {
+  if (!editorEl) return
+  const range = savedRange || (() => {
+    const sel = window.getSelection()
+    return sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null
+  })()
+  if (!range || range.collapsed) return
+
+  const allSpans = editorEl.querySelectorAll<HTMLSpanElement>('span[style*="font-size"]')
+  for (const span of allSpans) {
+    if (span.closest('[data-size-effect]')) continue
+    if (!range.intersectsNode(span)) continue
+    span.style.fontSize = `${newSize}px`
   }
 }
 
@@ -390,9 +525,9 @@ export function applyStyleToActiveWord(prop: string, value: string) {
   computeWordAtCursor()
 }
 
-/** Ajoute/modifie/supprime le lien du mot actif */
-export function setActiveWordLink(url: string | null) {
-  const w = activeWord()
+/** Ajoute/modifie/supprime le lien du mot actif (ou d'un mot passé en paramètre) */
+export function setActiveWordLink(url: string | null, overrideWord?: { linkEl: HTMLAnchorElement | null; spans: HTMLElement[] }) {
+  const w = overrideWord || activeWord()
   if (!w || !editorEl) return
   const op = recordOperation(url ? `Lien : ${url.replace(/^https?:\/\//, '').slice(0, 25)}` : 'Retirer lien', 'link')
 
@@ -614,11 +749,193 @@ export function Editor() {
        tout heritage de background/color/etc. */
     if (editorEl) {
       editorEl.addEventListener('beforeinput', (e) => {
+        // Backspace sur un retour à la ligne → supprimer marqueur + br + zws
+        if (e.inputType === 'deleteContentBackward') {
+          const sel = window.getSelection()
+          if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return // laisser le navigateur gérer les sélections non-collapsed
+
+          const range = sel.getRangeAt(0)
+          let node: Node | null = range.startContainer
+          let off = range.startOffset
+
+          // Trouver le nœud juste avant le curseur
+          let prev: Node | null = null
+          if (node.nodeType === Node.TEXT_NODE) {
+            if (off === 0) {
+              // Curseur au début d'un text node → le nœud précédent
+              prev = node.previousSibling
+            } else if (off === 1 && node.textContent === '\u200B') {
+              // Curseur juste après le zero-width space
+              prev = node // on va supprimer ce zws et chercher le br/marker avant
+            } else {
+              return // position normale dans du texte, laisser le navigateur gérer
+            }
+          } else if (node.nodeType === Node.ELEMENT_NODE) {
+            prev = off > 0 ? node.childNodes[off - 1] : null
+            if (!prev) {
+              // Curseur au début d'un élément → chercher le nœud précédent du parent
+              prev = node.previousSibling
+            }
+          }
+
+          // Remonter les text nodes vides / zws
+          while (prev && prev.nodeType === Node.TEXT_NODE && (prev.textContent === '' || prev.textContent === '\u200B')) {
+            const tmp = prev.previousSibling
+            prev.remove()
+            prev = tmp
+          }
+
+          // Cas 1 : juste après un <br> qui suit un .line-break
+          if (prev && prev.nodeName === 'BR') {
+            const br = prev
+            const beforeBr = br.previousSibling
+            if (beforeBr && (beforeBr as Element).classList?.contains('line-break')) {
+              e.preventDefault()
+              flushTyping()
+              const op = recordOperation('Suppr retour ligne', 'format')
+              // Supprimer aussi le zws après le br s'il existe encore
+              const afterBr = br.nextSibling
+              if (afterBr && afterBr.nodeType === Node.TEXT_NODE && afterBr.textContent === '\u200B') {
+                afterBr.remove()
+              }
+              // Positionner le curseur là où était le marqueur
+              const nr = document.createRange()
+              nr.setStartBefore(beforeBr)
+              nr.collapse(true)
+              br.remove()
+              beforeBr.remove()
+              sel.removeAllRanges()
+              sel.addRange(nr)
+              op.commit()
+              scheduleCheck()
+              return
+            }
+          }
+
+          // Cas 2 : le curseur est juste après le marqueur .line-break lui-même
+          if (prev && (prev as Element).classList?.contains('line-break')) {
+            e.preventDefault()
+            flushTyping()
+            const op = recordOperation('Suppr retour ligne', 'format')
+            const marker = prev
+            // Supprimer le br et le zws qui suivent
+            let nxt = marker.nextSibling
+            if (nxt && nxt.nodeName === 'BR') {
+              const afterBr = nxt.nextSibling
+              if (afterBr && afterBr.nodeType === Node.TEXT_NODE && afterBr.textContent === '\u200B') {
+                afterBr.remove()
+              }
+              nxt.remove()
+            }
+            const nr = document.createRange()
+            nr.setStartBefore(marker)
+            nr.collapse(true)
+            marker.remove()
+            sel.removeAllRanges()
+            sel.addRange(nr)
+            op.commit()
+            scheduleCheck()
+            return
+          }
+        }
+
+        // Retour à la ligne → marqueur visuel + br + br pour contentEditable
+        if (e.inputType === 'insertParagraph' || e.inputType === 'insertLineBreak') {
+          e.preventDefault()
+          flushTyping()
+          const op = recordOperation('Retour ligne', 'format')
+          const sel = window.getSelection()
+          if (sel && sel.rangeCount > 0) {
+            const range = sel.getRangeAt(0)
+            range.deleteContents()
+
+            // Trouver le point d'insertion au niveau direct de l'éditeur
+            // (comme pour les caractères tapés) pour éviter d'hériter du style parent
+            let insertionPoint: Node = range.startContainer
+            let offset = range.startOffset
+
+            // Si on est dans un text node, spliter
+            if (insertionPoint.nodeType === Node.TEXT_NODE) {
+              const textNode = insertionPoint as Text
+              const parent = textNode.parentNode!
+              if (parent !== editorEl) {
+                const after = textNode.splitText(offset)
+                insertionPoint = parent
+                offset = Array.from(parent.childNodes).indexOf(after)
+              } else {
+                textNode.splitText(offset)
+                insertionPoint = editorEl!
+                offset = Array.from(editorEl!.childNodes).indexOf(textNode) + 1
+              }
+            }
+
+            // Remonter et spliter les ancêtres jusqu'à l'éditeur
+            while (insertionPoint !== editorEl && insertionPoint.parentNode !== editorEl) {
+              const parent = insertionPoint.parentNode!
+              const clone = (insertionPoint as Element).cloneNode(false)
+              while (insertionPoint.childNodes[offset]) {
+                clone.appendChild(insertionPoint.childNodes[offset])
+              }
+              parent.insertBefore(clone, insertionPoint.nextSibling)
+              insertionPoint = parent
+              offset = Array.from(parent.childNodes).indexOf(clone)
+            }
+
+            // Déterminer le nœud de référence pour l'insertion
+            let refNode: Node | null = null
+            if (insertionPoint === editorEl) {
+              refNode = editorEl!.childNodes[offset] || null
+            } else {
+              // insertionPoint est un enfant direct de l'éditeur — spliter si nécessaire
+              const clone = (insertionPoint as Element).cloneNode(false)
+              while (insertionPoint.childNodes[offset]) {
+                clone.appendChild(insertionPoint.childNodes[offset])
+              }
+              if (clone.childNodes.length > 0) {
+                editorEl!.insertBefore(clone, insertionPoint.nextSibling)
+              }
+              refNode = insertionPoint.nextSibling
+            }
+
+            // Marqueur visuel ↵ — inséré comme enfant direct de l'éditeur
+            const marker = document.createElement('span')
+            marker.className = 'line-break'
+            marker.setAttribute('contenteditable', 'false')
+            marker.textContent = '↵'
+            editorEl!.insertBefore(marker, refNode)
+
+            // BR après le marqueur pour le vrai saut de ligne
+            const br = document.createElement('br')
+            marker.after(br)
+
+            // Zero-width space après le br pour que le curseur descende visuellement
+            const zws = document.createTextNode('\u200B')
+            br.after(zws)
+
+            // Placer le curseur après le zws
+            const nr = document.createRange()
+            nr.setStartAfter(zws)
+            nr.collapse(true)
+            sel.removeAllRanges()
+            sel.addRange(nr)
+
+            // Nettoyer les éléments vides créés par le split
+            editorEl!.querySelectorAll('span:empty, font:empty, b:empty, i:empty, u:empty').forEach(el => {
+              if (!el.classList.contains('line-break')) el.remove()
+            })
+          }
+          op.commit()
+          scheduleCheck()
+          return
+        }
+
         if (e.inputType !== 'insertText' || !e.data) return
 
         e.preventDefault()
+        // Espace → non-breaking space pour éviter la collapse HTML
+        const char = e.data === ' ' ? '\u00A0' : e.data
         // Snapshot debounce pour pouvoir undo la frappe
-        recordTypingChar(e.data)
+        recordTypingChar(char)
         const buf = getBuffer()
 
         const deco: string[] = []
@@ -637,7 +954,7 @@ export function Editor() {
 
         const span = document.createElement('span')
         span.setAttribute('style', styleParts.join(';'))
-        span.textContent = e.data
+        span.textContent = char
 
         const sel = window.getSelection()
         if (!sel || sel.rangeCount === 0) return
@@ -730,13 +1047,37 @@ export function Editor() {
           buf.hiliteColor ? `background-color:${buf.hiliteColor}` : '',
         ].filter(Boolean).join(';')
         const html = [...text].map(ch => {
-          if (ch === '\n') return '<br>'
+          if (ch === '\n') return '<span class="line-break" contenteditable="false">↵</span><br>'
           if (ch === ' ') return ' '
           const safe = ch.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
           return `<span style="${style}">${safe}</span>`
         }).join('')
         replaceSelectionWithHtml(html, 'Coller')
         scheduleCheck()
+      })
+
+      // Intercepter Ctrl+C / Cmd+C pour nettoyer le HTML avant copie
+      editorEl.addEventListener('copy', (e) => {
+        const sel = window.getSelection()
+        if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return
+        e.preventDefault()
+
+        // Extraire le HTML de la sélection
+        const range = sel.getRangeAt(0)
+        const fragment = range.cloneContents()
+        const tmp = document.createElement('div')
+        tmp.appendChild(fragment)
+
+        // Nettoyer pour Outlook
+        const cleanHtml = cleanForOutlook(tmp.innerHTML)
+
+        // Texte brut : extraire depuis le fragment nettoyé (nbsp → espaces normales)
+        const plainDiv = document.createElement('div')
+        plainDiv.innerHTML = cleanHtml
+        const plainText = (plainDiv.textContent || '').replace(/\u00A0/g, ' ')
+
+        e.clipboardData?.setData('text/html', cleanHtml)
+        e.clipboardData?.setData('text/plain', plainText)
       })
     }
 

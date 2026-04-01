@@ -1,5 +1,6 @@
 import { For, Show, createSignal, createEffect, on } from 'solid-js'
-import { COLOR_EFFECTS, SIZE_EFFECTS, applyEffects, applyComposedEffect } from '../engine/effects'
+import { sampleProfile, applyComposedEffect } from '../engine/effects'
+import { adminData } from '../stores/admin-data'
 import { sparklineFromEffect } from '../engine/sparkline'
 import { baseSize, sizeAmplitude, setCustomSizeProfile } from '../stores/editor'
 import { getFavorites, getBaseEffects, getPersoEffects, history, pushHistory, type WorkshopEffect } from '../stores/workshops'
@@ -23,7 +24,7 @@ function renderColorName(effect: WorkshopEffect): string {
       return `<span style="${prop}:${c}">${ch}</span>`
     }).join('')
   }
-  return applyEffects(effect.label, effect.id, null, { baseSize: 11 })
+  return effect.label
 }
 
 // ── Composant ──
@@ -39,22 +40,51 @@ export function SidePanel(props: { side: 'left' | 'right' }) {
   const isComposedType = (e: WorkshopEffect) => e.type === 'composed'
   const matchesSide = (e: WorkshopEffect) => isComposedType(e) || (isLeft() ? isColorType(e) : isSizeType(e))
 
-  const baseEffects = () => getBaseEffects().filter(matchesSide)
-  const baseTextEffects = () => getBaseEffects().filter(e => isColorText(e))
-  const baseBgEffects = () => getBaseEffects().filter(e => isColorBg(e))
+  // ── Effets couleur : tous (base + perso fusionnés) ──
+  const allTextEffects = () => [
+    ...getBaseEffects().filter(isColorText),
+    ...getPersoEffects().filter(e => e.type === 'custom-color').map(e => ({ ...e, colorMode: 'text' as const })),
+  ]
+  const allBgEffects = () => [
+    ...getBaseEffects().filter(isColorBg),
+    ...getPersoEffects().filter(e => e.type === 'custom-color').map(e => ({ ...e, colorMode: 'bg' as const })),
+  ]
 
-  const persoEffectsForSide = () => getPersoEffects().filter(matchesSide)
+  // ── Favoris et récents par colonne ──
+  const textFavs = () => {
+    const baseFavs = getFavorites().filter(e => isColorType(e) && (e.colorMode ?? 'text') === 'text' && e.type !== 'custom-color')
+    const persoFavs = getFavorites().filter(e => e.type === 'custom-color').map(e => ({ ...e, colorMode: 'text' as const }))
+    return [...baseFavs, ...persoFavs]
+  }
+  const bgFavs = () => {
+    const baseFavs = getFavorites().filter(e => isColorType(e) && e.colorMode === 'bg')
+    const persoFavs = getFavorites().filter(e => e.type === 'custom-color').map(e => ({ ...e, colorMode: 'bg' as const }))
+    return [...baseFavs, ...persoFavs]
+  }
 
-  const favs = () => getFavorites().filter(matchesSide)
+  const textHist = () => history().filter(e => isColorType(e) && (e.colorMode ?? 'text') === 'text').slice(0, 3)
+  const bgHist = () => history().filter(e => isColorType(e) && e.colorMode === 'bg').slice(0, 3)
 
-  const hist = () => history().filter(matchesSide).slice(0, 3)
+  // Alignement colonnes : afficher sections si l'une des deux colonnes a du contenu
+  const hasFavs = () => textFavs().length > 0 || bgFavs().length > 0
+  const hasHist = () => textHist().length > 0 || bgHist().length > 0
+  const maxFavs = () => Math.max(textFavs().length, bgFavs().length)
+  const maxHist = () => Math.max(textHist().length, bgHist().length)
+
+  // ── Effets taille : tous (base + perso fusionnés) ──
+  const allSizeEffects = () => [
+    ...getBaseEffects().filter(isSizeType),
+    ...getPersoEffects().filter(isSizeType),
+  ]
+  const sizeFavs = () => getFavorites().filter(isSizeType)
+  const sizeHist = () => history().filter(isSizeType).slice(0, 3)
 
   /** Clic sur un effet */
   const handleClick = (effect: WorkshopEffect) => {
     const text = getSelectedText()
     if (text) {
       if (effect.type === 'color') {
-        const colors = effect.colors ?? COLOR_EFFECTS[effect.id]?.colors
+        const colors = effect.colors
         if (!colors) return
         pushHistory(effect)
         const modeLabel = (effect.colorMode ?? 'text') === 'bg' ? 'Fond' : 'Couleur'
@@ -64,14 +94,14 @@ export function SidePanel(props: { side: 'left' | 'right' }) {
         const modeLabel2 = (effect.colorMode ?? 'text') === 'bg' ? 'Fond' : 'Couleur'
         applyColorToSelection(effect.customColors, effect.colorMode ?? 'text', `${modeLabel2} : ${effect.label}`)
       } else if (effect.type === 'size') {
-        const sizeEffect = SIZE_EFFECTS[effect.id]
-        if (!sizeEffect) return
+        const profile = effect.profile
+        if (!profile) return
         setCustomSizeProfile(null)
         pushHistory(effect)
         applySizeToSelection(
           (charIdx, total) => {
             const t = total <= 1 ? 0 : charIdx / (total - 1)
-            return opts().amplitude * sizeEffect.getShape(t)
+            return opts().amplitude * sampleProfile(profile, t)
           },
           opts().baseSize,
           `Taille : ${effect.label}`,
@@ -98,14 +128,20 @@ export function SidePanel(props: { side: 'left' | 'right' }) {
         )
       } else if (effect.type === 'composed' && effect.composedData) {
         pushHistory(effect)
-        // Resoudre les couleurs custom si necessaire
         let resolvedColors: string[] | null = null
         const cRef = effect.composedData.colorEffectRef
         if (cRef) {
           const perso = getPersoEffects().find(e => e.id === cRef)
-          if (perso?.customColors) resolvedColors = perso.customColors
+          if (perso?.customColors) {
+            resolvedColors = perso.customColors
+          } else {
+            resolvedColors = adminData().colorEffects[cRef]?.colors ?? null
+          }
         }
-        const html = applyComposedEffect(text, effect.composedData, opts(), resolvedColors)
+        const resolvedSize = effect.composedData.sizeEffectRef
+          ? adminData().sizeEffects?.[effect.composedData.sizeEffectRef]?.profile ?? null
+          : null
+        const html = applyComposedEffect(text, effect.composedData, opts(), resolvedColors, null, resolvedSize)
         replaceSelectionWithHtml(html, `Composé : ${effect.label}`)
       }
       showToast('Effet applique !')
@@ -118,7 +154,7 @@ export function SidePanel(props: { side: 'left' | 'right' }) {
   const [animatingIds, setAnimatingIds] = createSignal<Set<string>>(new Set())
   let prevHistIds: string[] = []
 
-  createEffect(on(hist, (current) => {
+  createEffect(on(() => history().filter(matchesSide).slice(0, 3), (current) => {
     const currentIds = current.map(h => h.id)
     const newIds = currentIds.filter(id => !prevHistIds.includes(id))
     if (newIds.length > 0) {
@@ -177,45 +213,84 @@ export function SidePanel(props: { side: 'left' | 'right' }) {
   )
 
   const EffectTag = (p: { effect: WorkshopEffect; extra?: string }) =>
-    p.effect.type === 'color'
+    isColorType(p.effect)
       ? <ColorTag effect={p.effect} extra={p.extra} />
       : <SizeTag effect={p.effect} extra={p.extra} />
 
-  // Layout 2 colonnes pour le panel gauche (texte | fond)
+  /** Colonne de couleur (texte ou fond) avec favoris, récents, tous */
+  const ColorColumn = (colProps: {
+    title: string
+    favs: () => WorkshopEffect[]
+    hist: () => WorkshopEffect[]
+    all: () => WorkshopEffect[]
+    reserveFavs: () => number
+    reserveHist: () => number
+  }) => (
+    <div class="side-col">
+      <div class="side-panel-title">{colProps.title}</div>
+      <div class="side-col-scroll">
+        <Show when={hasFavs()}>
+          <div class="side-label">Favoris</div>
+          <For each={colProps.favs()}>
+            {(effect) => <EffectTag effect={effect} />}
+          </For>
+          <For each={Array(colProps.reserveFavs() - colProps.favs().length).fill(0)}>
+            {() => <div class="side-tag-placeholder" />}
+          </For>
+          <div class="side-sep" />
+        </Show>
+
+        <Show when={hasHist()}>
+          <div class="side-label">Recents</div>
+          <For each={colProps.hist()}>
+            {(effect) => (
+              <EffectTag
+                effect={effect}
+                extra={`recent ${animatingIds().has(effect.id) ? 'side-tag-enter' : ''}`}
+              />
+            )}
+          </For>
+          <For each={Array(colProps.reserveHist() - colProps.hist().length).fill(0)}>
+            {() => <div class="side-tag-placeholder" />}
+          </For>
+          <div class="side-sep" />
+        </Show>
+
+        <For each={colProps.all()}>
+          {(effect) => <EffectTag effect={effect} />}
+        </For>
+      </div>
+    </div>
+  )
+
+  // ── Panneau gauche : deux colonnes Texte / Fond ──
   if (isLeft()) {
     return (
-      <div class="side-panel side-panel-left side-panel-dual">
-        <div class="side-col">
-          <div class="side-panel-title">Texte</div>
-          <For each={baseTextEffects()}>
-            {(effect) => <EffectTag effect={effect} />}
-          </For>
-        </div>
-        <div class="side-col">
-          <div class="side-panel-title">Fond</div>
-          <For each={baseBgEffects()}>
-            {(effect) => <EffectTag effect={effect} />}
-          </For>
+      <div class="side-panel side-panel-left" onMouseDown={(e) => e.preventDefault()}>
+        <div class="side-dual-cols">
+          <ColorColumn title="Texte" favs={textFavs} hist={textHist} all={allTextEffects} reserveFavs={maxFavs} reserveHist={maxHist} />
+          <ColorColumn title="Fond" favs={bgFavs} hist={bgHist} all={allBgEffects} reserveFavs={maxFavs} reserveHist={maxHist} />
         </div>
       </div>
     )
   }
 
+  // ── Panneau droit : colonne unique Taille ──
   return (
-    <div class="side-panel side-panel-right">
+    <div class="side-panel side-panel-right" onMouseDown={(e) => e.preventDefault()}>
       <div class="side-panel-title">Taille</div>
 
-      <Show when={favs().length > 0}>
+      <Show when={sizeFavs().length > 0}>
         <div class="side-label">Favoris</div>
-        <For each={favs()}>
+        <For each={sizeFavs()}>
           {(effect) => <EffectTag effect={effect} />}
         </For>
         <div class="side-sep" />
       </Show>
 
-      <Show when={hist().length > 0}>
+      <Show when={sizeHist().length > 0}>
         <div class="side-label">Recents</div>
-        <For each={hist()}>
+        <For each={sizeHist()}>
           {(effect) => (
             <EffectTag
               effect={effect}
@@ -226,18 +301,9 @@ export function SidePanel(props: { side: 'left' | 'right' }) {
         <div class="side-sep" />
       </Show>
 
-      <div class="side-label">Tous</div>
-      <For each={baseEffects()}>
+      <For each={allSizeEffects()}>
         {(effect) => <EffectTag effect={effect} />}
       </For>
-
-      <Show when={persoEffectsForSide().length > 0}>
-        <div class="side-sep" />
-        <div class="side-label">Perso</div>
-        <For each={persoEffectsForSide()}>
-          {(effect) => <EffectTag effect={effect} />}
-        </For>
-      </Show>
     </div>
   )
 }

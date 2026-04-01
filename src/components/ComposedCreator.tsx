@@ -1,6 +1,7 @@
 import { createSignal, For, Show, createMemo } from 'solid-js'
-import { COLOR_EFFECTS, SIZE_EFFECTS, type ComposedEffectData, type EmojiPosition } from '../engine/effects'
-import { sparklineFromFn } from '../engine/sparkline'
+import { sampleProfile, type ComposedEffectData, type EmojiPosition } from '../engine/effects'
+import { adminData } from '../stores/admin-data'
+import { sparklineFromProfile } from '../engine/sparkline'
 import { getPersoEffects } from '../stores/workshops'
 import { baseSize, sizeAmplitude } from '../stores/editor'
 import { FONTS } from '../data/fonts'
@@ -50,9 +51,9 @@ export function ComposedCreator(props: Props) {
       {/* TAILLE */}
       <div class="composed-section-label">Taille (optionnel)</div>
       <div class="composed-tag-grid">
-        <For each={Object.entries(SIZE_EFFECTS)}>
+        <For each={Object.entries(adminData().sizeEffects ?? {})}>
           {([id, effect]) => {
-            const path = () => sparklineFromFn((t) => effect.getShape(t))
+            const path = () => sparklineFromProfile(effect.profile)
             const accent = () => SIZE_ACCENT_COLORS[id] ?? 'var(--lavender)'
             return (
               <button
@@ -89,7 +90,7 @@ export function ComposedCreator(props: Props) {
 
       <Show when={colorMode() === 'effect'}>
         <div class="composed-tag-grid">
-          <For each={Object.entries(COLOR_EFFECTS)}>
+          <For each={Object.entries(adminData().colorEffects)}>
             {([id, effect]) => (
               <button
                 class={`side-tag ${selectedColorRef() === id ? 'armed' : ''}`}

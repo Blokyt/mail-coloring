@@ -2,22 +2,18 @@ import { createSignal, For, Show, onMount } from 'solid-js'
 import { Modal } from './Modal'
 import { isAdmin } from '../stores/admin'
 import {
-  adminData, saveAdminData, loadAdminData,
-  adminSetColorEffect, adminRemoveColorEffect, adminHideColorEffect, adminUnhideColorEffect,
+  adminData, saveAdminData,
+  adminSetColorEffect, adminRemoveColorEffect,
   adminRenameSizeEffect,
-  adminAddEmoji, adminRemoveEmoji, adminUpdateEmoji,
-  adminToggleHideEmoji, adminIsEmojiHidden, adminRenameEmoji,
   adminSetCss, isColorEffectDirty,
-  type AdminColorEffect, type AdminEmoji,
+  type AdminColorEffect,
 } from '../stores/admin-data'
-import { COLOR_EFFECTS, SIZE_EFFECTS } from '../engine/effects'
-import { sparklineFromFn } from '../engine/sparkline'
+import { sparklineFromProfile } from '../engine/sparkline'
 import { SIZE_ACCENTS } from '../data/accents'
-import { DEFAULT_EMOJIS } from '../data/emojis'
 import { VENETIAN_PALETTE } from '../data/colors'
 import { showToast } from './Toast'
 
-type Tab = 'css' | 'colors' | 'emojis'
+type Tab = 'css' | 'colors'
 
 /* ══════════════════════════════════════════
    CSS Tweaker — types & data (ex CssTweaker.tsx)
@@ -37,7 +33,7 @@ const CSS_CATEGORIES: Category[] = [
   ]},
   { name: 'Couleurs — Base', controls: [
     { type: 'color', label: 'Texte', variable: '--soft-black', value: '#374151' },
-    { type: 'color', label: 'Fond page', variable: '--bg', value: '#faf9f7' },
+    { type: 'color', label: 'Fond page', variable: '--bg', value: '#F1E3DC' },
     { type: 'color', label: 'Fond blanc', variable: '--white', value: '#ffffff' },
     { type: 'color', label: 'Attenue', variable: '--muted', value: '#9ca3af' },
     { type: 'color', label: 'Separateur', variable: '--separator', value: '#e5e7eb' },
@@ -69,9 +65,15 @@ const CSS_CATEGORIES: Category[] = [
     { type: 'range', label: 'Pad toolbar', variable: '--toolbar-pad', min: 2, max: 20, value: 6, unit: 'px' },
     { type: 'range', label: 'Pad header', variable: '--header-pad', min: 2, max: 20, value: 8, unit: 'px' },
   ]},
-  { name: 'Logo', controls: [
+  { name: 'Logo watermark', controls: [
     { type: 'range', label: 'Taille', variable: '--logo-size', min: 100, max: 1000, step: 10, value: 500, unit: 'px' },
     { type: 'range', label: 'Opacite', variable: '--logo-opacity', min: 1, max: 20, value: 6, unit: '', divisor: 100 },
+  ]},
+  { name: 'Logo header', controls: [
+    { type: 'range', label: 'Hauteur', variable: '--header-logo-height', min: 16, max: 80, value: 36, unit: 'px' },
+    { type: 'range', label: 'Opacite', variable: '--header-logo-opacity', min: 0, max: 100, value: 100, unit: '', divisor: 100 },
+    { type: 'range', label: 'Marge haut', variable: '--header-logo-margin-top', min: -20, max: 20, value: 0, unit: 'px' },
+    { type: 'range', label: 'Marge droite', variable: '--header-logo-margin-right', min: -10, max: 30, value: 0, unit: 'px' },
   ]},
 ]
 
@@ -158,27 +160,10 @@ export function AdminPanel() {
   const [addingEffect, setAddingEffect] = createSignal(false)
 
   const allColorEffects = () => {
-    const hidden = new Set(adminData().hiddenColorEffects)
-    const base = Object.entries(COLOR_EFFECTS).map(([id, e]) => ({
-      id, name: adminData().colorEffects[id]?.name ?? e.name,
-      colors: adminData().colorEffects[id]?.colors ?? e.colors,
-      isDirty: isColorEffectDirty(id), isCustom: false, isHidden: hidden.has(id),
+    return Object.entries(adminData().colorEffects).map(([id, e]) => ({
+      id, name: e.name, colors: e.colors,
+      isDirty: isColorEffectDirty(id),
     }))
-    const customIds = Object.keys(adminData().colorEffects).filter(id => !COLOR_EFFECTS[id])
-    const custom = customIds.map(id => ({
-      id, name: adminData().colorEffects[id].name,
-      colors: adminData().colorEffects[id].colors,
-      isDirty: isColorEffectDirty(id), isCustom: true, isHidden: hidden.has(id),
-    }))
-    return [...base, ...custom]
-  }
-
-  const deleteEffect = (id: string, isCustom: boolean) => {
-    if (isCustom) {
-      adminRemoveColorEffect(id)
-    } else {
-      adminHideColorEffect(id)
-    }
   }
 
   const startEdit = (id: string, name: string, colors: string[]) => {
@@ -202,54 +187,6 @@ export function AdminPanel() {
   }
 
   // ── Emojis ──
-  const [newEmoji, setNewEmoji] = createSignal('')
-  const [newEmojiLabel, setNewEmojiLabel] = createSignal('')
-  const [editingEmojiId, setEditingEmojiId] = createSignal<string | null>(null)
-  const [editEmojiLabel, setEditEmojiLabel] = createSignal('')
-
-  const allEmojis = () => {
-    const data = adminData()
-    const base = DEFAULT_EMOJIS.map(e => ({
-      ...e,
-      label: data.emojiOverrides[e.id]?.label ?? e.label,
-      source: 'base' as const,
-      hidden: data.hiddenEmojis.includes(e.id),
-    }))
-    const admin = data.emojis.map(e => ({
-      ...e,
-      source: 'admin' as const,
-      hidden: data.hiddenEmojis.includes(e.id),
-    }))
-    return [...base, ...admin]
-  }
-
-  const addAdminEmoji = () => {
-    const emoji = newEmoji().trim(), label = newEmojiLabel().trim() || emoji
-    if (!emoji) return
-    adminAddEmoji({ id: `admin-emoji-${Date.now()}`, emoji, label })
-    setNewEmoji(''); setNewEmojiLabel('')
-  }
-
-  const startEmojiEdit = (id: string, label: string) => {
-    setEditingEmojiId(id)
-    setEditEmojiLabel(label)
-  }
-
-  const confirmEmojiEdit = () => {
-    const id = editingEmojiId()
-    if (!id) return
-    const label = editEmojiLabel().trim()
-    // Base emoji → override, admin emoji → update
-    const isBase = DEFAULT_EMOJIS.some(e => e.id === id)
-    if (isBase) {
-      const original = DEFAULT_EMOJIS.find(e => e.id === id)!
-      adminRenameEmoji(id, label === original.label ? '' : label)
-    } else {
-      adminUpdateEmoji(id, { label })
-    }
-    setEditingEmojiId(null)
-  }
-
   // ── Global save ──
   const handleSave = async () => {
     setSaving(true)
@@ -272,10 +209,9 @@ export function AdminPanel() {
         <button class={`admin-gear ${open() ? 'open' : ''}`} onClick={() => setOpen(!open())} title="Panneau admin">⚙</button>
       </Show>
 
-      <Modal open={open()} onClose={() => setOpen(false)} title="Administration" description="Effets, emojis et interface" size="lg" zIndex={250}>
+      <Modal open={open()} onClose={() => setOpen(false)} title="Administration" description="Effets et interface" size="lg" zIndex={250}>
         <div class="admin-tabs">
           <button class={`catalog-tab ${tab() === 'colors' ? 'active' : ''}`} onClick={() => setTab('colors')}>Effets</button>
-          <button class={`catalog-tab ${tab() === 'emojis' ? 'active' : ''}`} onClick={() => setTab('emojis')}>Emojis</button>
           <button class={`catalog-tab ${tab() === 'css' ? 'active' : ''}`} onClick={() => setTab('css')}>Interface CSS</button>
         </div>
 
@@ -285,25 +221,19 @@ export function AdminPanel() {
             <div class="admin-section">
               <For each={allColorEffects()}>
                 {(effect) => (
-                  <div class={`admin-effect-row ${effect.isCustom ? 'admin-custom' : ''} ${effect.isHidden ? 'admin-effect-hidden' : ''}`}>
+                  <div class="admin-effect-row">
                     <Show when={editingId() === effect.id} fallback={
                       <>
                         <span class="admin-effect-name">
                           {effect.name}
                           <Show when={effect.isDirty}><span class="admin-modified-badge">non sauve</span></Show>
-                          <Show when={effect.isCustom}><span class="admin-custom-badge">admin</span></Show>
                         </span>
                         <div class="admin-color-preview">
                           <For each={effect.colors}>{(c) => <span class="admin-color-dot" style={{ background: c }} />}</For>
                         </div>
                         <div class="admin-effect-actions">
-                          <Show when={!effect.isHidden}>
-                            <button class="btn admin-btn" onClick={() => startEdit(effect.id, effect.name, effect.colors)}>Modifier</button>
-                            <button class="admin-btn-danger" onClick={() => deleteEffect(effect.id, effect.isCustom)}>Supprimer</button>
-                          </Show>
-                          <Show when={effect.isHidden}>
-                            <button class="btn admin-btn" onClick={() => adminUnhideColorEffect(effect.id)}>Restaurer</button>
-                          </Show>
+                          <button class="btn admin-btn" onClick={() => startEdit(effect.id, effect.name, effect.colors)}>Modifier</button>
+                          <button class="admin-btn-danger" onClick={() => adminRemoveColorEffect(effect.id)}>Supprimer</button>
                         </div>
                       </>
                     }>
@@ -351,101 +281,35 @@ export function AdminPanel() {
 
               {/* ── Effets taille ── */}
               <div class="admin-section-label" style={{ "margin-top": "20px" }}>Effets de taille</div>
-              <For each={Object.entries(SIZE_EFFECTS)}>
+              <For each={Object.entries(adminData().sizeEffects ?? {})}>
                 {([id, effect]) => {
                   const [editing, setEditing] = createSignal(false)
-                  const [name, setName] = createSignal(adminData().sizeEffectNames[id] ?? effect.name)
-                  const path = () => sparklineFromFn((t) => effect.getShape(t))
+                  const [name, setName] = createSignal(effect.name)
+                  const path = () => sparklineFromProfile(effect.profile)
                   const accent = () => SIZE_ACCENTS[id] ?? 'var(--lavender)'
-                  const isRenamed = () => !!adminData().sizeEffectNames[id]
                   return (
                     <div class="admin-effect-row">
                       <Show when={editing()} fallback={
                         <>
-                          <span class="admin-effect-name">
-                            {adminData().sizeEffectNames[id] ?? effect.name}
-                            <Show when={isRenamed()}><span class="admin-modified-badge">renomme</span></Show>
-                          </span>
+                          <span class="admin-effect-name">{effect.name}</span>
                           <svg class="admin-sparkline" viewBox="0 0 100 24" preserveAspectRatio="none">
                             <path d={path()} fill="none" stroke={accent()} stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
                           </svg>
                           <div class="admin-effect-actions">
-                            <button class="btn admin-btn" onClick={() => setEditing(true)}>Renommer</button>
-                            <Show when={isRenamed()}>
-                              <button class="admin-btn-danger" onClick={() => { adminRenameSizeEffect(id, ''); setName(effect.name) }}>Reset</button>
-                            </Show>
+                            <button class="btn admin-btn" onClick={() => { setName(effect.name); setEditing(true) }}>Renommer</button>
                           </div>
                         </>
                       }>
                         <div class="admin-edit-form" style={{ "flex-direction": "row", "align-items": "center", gap: "8px" }}>
                           <input class="naming-input" value={name()} onInput={(e) => setName(e.currentTarget.value)} style={{ flex: "1" }} />
                           <button class="btn btn-lavender admin-btn" onClick={() => { adminRenameSizeEffect(id, name()); setEditing(false) }}>OK</button>
-                          <button class="btn admin-btn" onClick={() => { setName(adminData().sizeEffectNames[id] ?? effect.name); setEditing(false) }}>Annuler</button>
+                          <button class="btn admin-btn" onClick={() => { setName(effect.name); setEditing(false) }}>Annuler</button>
                         </div>
                       </Show>
                     </div>
                   )
                 }}
               </For>
-            </div>
-          </Show>
-
-          {/* ── Emojis ── */}
-          <Show when={tab() === 'emojis'}>
-            <div class="admin-section">
-              <div class="admin-emoji-list">
-                <For each={allEmojis()}>
-                  {(entry) => (
-                    <div class={`admin-emoji-row ${entry.hidden ? 'admin-emoji-hidden' : ''}`}>
-                      <Show when={editingEmojiId() === entry.id} fallback={
-                        <>
-                          <span class="admin-emoji-char">{entry.emoji}</span>
-                          <span class="admin-emoji-label">
-                            {entry.label}
-                            <Show when={entry.source === 'admin'}><span class="admin-custom-badge">admin</span></Show>
-                            <Show when={entry.source === 'base' && !!adminData().emojiOverrides[entry.id]}><span class="admin-modified-badge">renomme</span></Show>
-                          </span>
-                          <div class="admin-emoji-actions">
-                            <button class="admin-emoji-action-btn" onClick={() => startEmojiEdit(entry.id, entry.label)} title="Renommer">Aa</button>
-                            <button class={`admin-emoji-action-btn ${entry.hidden ? 'admin-emoji-show-btn' : ''}`} onClick={() => adminToggleHideEmoji(entry.id)} title={entry.hidden ? 'Afficher' : 'Masquer'}>{entry.hidden ? '+' : '-'}</button>
-                            <Show when={entry.source === 'admin'}>
-                              <button class="admin-emoji-action-btn admin-emoji-delete-btn" onClick={() => adminRemoveEmoji(entry.id)} title="Supprimer">x</button>
-                            </Show>
-                            <Show when={entry.source === 'base' && !!adminData().emojiOverrides[entry.id]}>
-                              <button class="admin-emoji-action-btn" onClick={() => adminRenameEmoji(entry.id, '')} title="Reset nom">R</button>
-                            </Show>
-                          </div>
-                        </>
-                      }>
-                        <span class="admin-emoji-char">{entry.emoji}</span>
-                        <div class="admin-emoji-edit-form">
-                          <input
-                            class="naming-input"
-                            value={editEmojiLabel()}
-                            onInput={(e) => setEditEmojiLabel(e.currentTarget.value)}
-                            onKeyDown={(e) => { if (e.key === 'Enter') confirmEmojiEdit(); if (e.key === 'Escape') setEditingEmojiId(null) }}
-                            placeholder="Nom"
-                            autofocus
-                          />
-                          <button class="btn btn-lavender admin-emoji-action-btn" onClick={confirmEmojiEdit}>OK</button>
-                          <button class="btn admin-emoji-action-btn" onClick={() => setEditingEmojiId(null)}>Annuler</button>
-                        </div>
-                      </Show>
-                    </div>
-                  )}
-                </For>
-              </div>
-              <div class="admin-new-section">
-                <span class="admin-section-label">Ajouter un emoji</span>
-                <div class="admin-emoji-add-row">
-                  <input class="naming-input" value={newEmoji()} onInput={(e) => setNewEmoji(e.currentTarget.value)} placeholder="😀" style={{ width: '64px', "font-size": '1.4rem', "text-align": 'center' }} />
-                  <input class="naming-input" value={newEmojiLabel()} onInput={(e) => setNewEmojiLabel(e.currentTarget.value)} placeholder="Label" style={{ flex: '1' }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') addAdminEmoji() }}
-                  />
-                  <button class="btn btn-lavender admin-btn" onClick={addAdminEmoji} disabled={!newEmoji().trim()}>Ajouter</button>
-                </div>
-                <span class="admin-emoji-hint">Collez un emoji dans le champ ou utilisez le clavier emoji de votre appareil</span>
-              </div>
             </div>
           </Show>
 

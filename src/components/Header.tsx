@@ -4,6 +4,7 @@ import { activeWord } from '../stores/word-inspect'
 import { performUndo, performRedo, canUndo, canRedo, undoLabel, redoLabel } from '../stores/undo-redo'
 import { showToast } from './Toast'
 import { HistoryPanel } from './HistoryPanel'
+import { cleanForOutlook } from '../engine/effects'
 
 /* ══════════════════════════════════════════
    Buffer de style — etat independant du curseur.
@@ -101,14 +102,16 @@ function LinkIndicator() {
 
   const confirm = () => {
     const url = val().trim()
-    setActiveWordLink(url && url !== 'https://' ? url : null)
+    const f = frozen()
+    setActiveWordLink(url && url !== 'https://' ? url : null, f?.word ?? undefined)
     setFrozen(null)
   }
 
   const cancel = () => setFrozen(null)
 
   const remove = () => {
-    setActiveWordLink(null)
+    const f = frozen()
+    setActiveWordLink(null, f?.word ?? undefined)
     setFrozen(null)
   }
 
@@ -169,14 +172,15 @@ export function Header() {
   const handleCopy = async () => {
     const html = getAllEditorHtml()
     if (!html) { showToast('Rien a copier', true); return }
-    const div = document.createElement('div')
-    div.innerHTML = html
-    div.querySelectorAll('*').forEach(el => { el.removeAttribute('class'); el.removeAttribute('id') })
+    const cleanHtml = cleanForOutlook(html)
+    const plainDiv = document.createElement('div')
+    plainDiv.innerHTML = cleanHtml
+    const plainText = plainDiv.textContent || ''
     try {
       await navigator.clipboard.write([
         new ClipboardItem({
-          'text/html': new Blob([div.innerHTML], { type: 'text/html' }),
-          'text/plain': new Blob([getAllEditorText()], { type: 'text/plain' }),
+          'text/html': new Blob([cleanHtml], { type: 'text/html' }),
+          'text/plain': new Blob([plainText], { type: 'text/plain' }),
         }),
       ])
       showToast('Copie pour Outlook !')
@@ -184,10 +188,8 @@ export function Header() {
   }
 
   return (
-    <header class="header">
-      <span class="brand-pill">
-        Mail Colorer
-      </span>
+    <header class="header" onMouseDown={(e) => { if ((e.target as HTMLElement).tagName !== 'INPUT') e.preventDefault() }}>
+      <img src="/logo1.png" alt="Art'lequin" class="header-logo" />
 
       {/* ── Hotbar : aperçu du style du prochain caractère (lecture seule) ── */}
       <div class={`status-bar ${isPreviewing() ? 'status-bar-preview' : ''}`} title="Aperçu du style appliqué au prochain caractère tapé ou double-cliqué">

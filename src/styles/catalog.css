@@ -63,8 +63,9 @@
 .catalog-empty-sub{font-family:'Fredoka',sans-serif;font-weight:500;font-size:var(--font-md);color:var(--muted);line-height:1.5}
 
 /* ── Bouton supprimer ── */
-.catalog-delete{background:none;border:none;font-size:var(--font-sm);cursor:pointer;color:var(--muted);padding:2px 6px;border-radius:var(--radius-sm);transition:all .15s}
-.catalog-delete:hover{color:#ef4444;background:rgba(239,68,68,0.08)}
+.catalog-delete{width:26px;height:26px;border-radius:var(--radius-sm);background:var(--white);border:var(--border) solid var(--soft-black);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:all .1s;box-shadow:2px 2px 0 var(--shadow-color);font-family:'Fredoka',sans-serif;font-size:var(--font-xs);font-weight:700;color:var(--soft-black);flex-shrink:0}
+.catalog-delete:hover{background:#fee2e2;border-color:#ef4444;color:#ef4444;transform:translate(-1px,-1px);box-shadow:3px 3px 0 #fca5a5}
+.catalog-delete:active{transform:translate(0,0);box-shadow:none}
 
 /* ── Expression math affichee ── */
 .catalog-card-expr{font-family:'Fredoka',sans-serif;font-weight:600;font-size:var(--font-sm);color:var(--lavender);padding:4px 8px;background:var(--white);border:var(--border) solid var(--separator);border-radius:var(--radius-sm)}
@@ -94,12 +95,12 @@
 /* ── Color Creator ── */
 .color-creator{display:flex;flex-direction:column;gap:14px}
 .color-creator-label{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-sm);color:var(--soft-black);text-transform:uppercase;letter-spacing:.5px}
-.color-creator-palette{display:flex;flex-wrap:wrap;gap:8px;align-items:center;min-height:36px;padding:8px;background:var(--bg);border:var(--border) solid var(--separator);border-radius:var(--radius-sm)}
+.color-creator-palette{display:flex;flex-wrap:wrap;gap:8px;align-items:center;min-height:40px;padding:8px 10px;background:var(--bg);border:var(--border) solid var(--separator);border-radius:var(--radius-sm)}
 .color-creator-swatch{width:28px;height:28px;border-radius:var(--radius-sm);border:var(--border) solid var(--soft-black);cursor:pointer;transition:transform .1s;box-shadow:2px 2px 0 var(--shadow-color)}
 .color-creator-swatch:hover{transform:scale(1.15)}
 .color-creator-swatches{display:flex;flex-wrap:wrap;gap:6px}
 .color-creator-picker-wrap{position:relative;width:28px;height:28px;flex-shrink:0}
-.color-creator-picker-visual{width:28px;height:28px;border-radius:var(--radius-sm);border:var(--border) solid var(--soft-black);background:conic-gradient(red,yellow,lime,aqua,blue,magenta,red);pointer-events:none}
+.color-creator-picker-visual{width:28px;height:28px;border-radius:var(--radius-sm);border:var(--border) solid var(--soft-black);pointer-events:none}
 .color-creator-picker-wrap input[type="color"]{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
 .color-creator-previews{display:flex;flex-direction:column;gap:6px}
 .color-creator-actions{display:flex;gap:10px}
@@ -109,11 +110,11 @@
 .emoji-picker-trigger{height:var(--btn-size);border-radius:var(--radius-sm) !important;padding:0 10px !important;font-size:var(--font-sm);min-width:0}
 .emoji-picker-trigger.has-value{font-size:1.2rem;padding:0 6px !important}
 .emoji-picker-backdrop{position:fixed;inset:0;z-index:1000}
-.emoji-picker{background:var(--white);border:var(--border) solid var(--soft-black);border-radius:var(--radius-md);box-shadow:var(--shadow-x) var(--shadow-y) 0 var(--shadow-color);z-index:1001;padding:12px;min-width:280px;max-height:320px;overflow-y:auto}
+.emoji-picker{background:var(--white);border:var(--border) solid var(--soft-black);border-radius:var(--radius-md);box-shadow:var(--shadow-x) var(--shadow-y) 0 var(--shadow-color);z-index:1001;padding:14px;width:380px;max-height:420px;overflow-y:auto}
 .emoji-picker-section{margin-bottom:10px}
 .emoji-picker-label{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-xs);color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
-.emoji-picker-grid{display:flex;flex-wrap:wrap;gap:4px}
-.emoji-picker-btn{width:36px;height:36px;border:var(--border) solid transparent;border-radius:var(--radius-sm);background:none;font-size:1.3rem;cursor:pointer;transition:all .1s;display:flex;align-items:center;justify-content:center}
+.emoji-picker-grid{display:flex;flex-wrap:wrap;gap:6px}
+.emoji-picker-btn{width:40px;height:40px;border:var(--border) solid transparent;border-radius:var(--radius-sm);background:none;font-size:1.4rem;cursor:pointer;transition:all .1s;display:flex;align-items:center;justify-content:center}
 .emoji-picker-btn:hover{background:var(--bg);border-color:var(--separator)}
 .emoji-picker-btn.active{background:var(--lavender);border-color:var(--soft-black)}
 .emoji-picker-add-btn{font-family:'Fredoka',sans-serif;font-weight:600;font-size:var(--font-sm);color:var(--lavender);background:none;border:none;cursor:pointer;padding:4px 0}
@@ -124,11 +125,10 @@
 
 /* ── Emoji items ── */
 .emoji-picker-item{position:relative;display:inline-flex}
-.emoji-fav-btn{display:none;position:absolute;top:-6px;left:-4px;width:18px;height:18px;border-radius:50%;background:var(--white);border:2px solid var(--separator);color:var(--muted);font-size:10px;cursor:pointer;align-items:center;justify-content:center;line-height:1;padding:0;z-index:2;transition:all .1s}
-.emoji-picker-item:hover .emoji-fav-btn{display:flex}
-.emoji-fav-btn.is-fav{display:flex;background:var(--peach);border-color:var(--peach);color:var(--white)}
-.emoji-fav-btn:hover{transform:scale(1.15);border-color:var(--peach);color:var(--peach)}
-.emoji-fav-btn.is-fav:hover{background:var(--muted);border-color:var(--muted)}
-.emoji-picker-item-perso .emoji-picker-remove{display:none;position:absolute;top:-6px;right:-4px;width:18px;height:18px;border-radius:50%;background:var(--soft-black);color:var(--white);border:none;font-size:9px;cursor:pointer;align-items:center;justify-content:center;line-height:1;padding:0;z-index:2}
-.emoji-picker-item-perso:hover .emoji-picker-remove{display:flex}
-.emoji-picker-btn.is-fav{box-shadow:inset 0 -2px 0 var(--peach)}
+.emoji-picker-btn.is-fav{box-shadow:inset 0 -3px 0 var(--peach)}
+.emoji-picker-unfav{display:none;position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:var(--radius-sm);background:var(--white);border:var(--border) solid var(--soft-black);font-family:'Fredoka',sans-serif;font-size:var(--font-xs);font-weight:700;color:var(--soft-black);cursor:pointer;align-items:center;justify-content:center;padding:0;z-index:2;box-shadow:2px 2px 0 var(--shadow-color);transition:all .1s}
+.emoji-picker-item:hover .emoji-picker-unfav{display:flex}
+.emoji-picker-unfav:hover{background:#fee2e2;border-color:#ef4444;color:#ef4444}
+.emoji-picker-fav-btn{display:none;position:absolute;top:-8px;left:-8px;width:20px;height:20px;border-radius:var(--radius-sm);background:var(--white);border:var(--border) solid var(--separator);font-family:'Fredoka',sans-serif;font-size:var(--font-xs);font-weight:700;color:var(--muted);cursor:pointer;align-items:center;justify-content:center;padding:0;z-index:2;box-shadow:2px 2px 0 var(--shadow-color);transition:all .1s;line-height:1}
+.emoji-picker-item:hover .emoji-picker-fav-btn{display:flex}
+.emoji-picker-fav-btn:hover{border-color:var(--peach);color:var(--peach);background:color-mix(in srgb,var(--peach) 10%,var(--white))}
