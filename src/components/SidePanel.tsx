@@ -76,8 +76,17 @@ export function SidePanel(props: { side: 'left' | 'right' }) {
     ...getBaseEffects().filter(isSizeType),
     ...getPersoEffects().filter(isSizeType),
   ]
-  const sizeFavs = () => getFavorites().filter(isSizeType)
-  const sizeHist = () => history().filter(isSizeType).slice(0, 3)
+  /** Enrichit un effet taille avec le profil d'adminData si manquant (historique ancien) */
+  const enrichSizeProfile = (e: WorkshopEffect): WorkshopEffect => {
+    if (e.profile) return e
+    if (e.type === 'size') {
+      const profile = adminData().sizeEffects?.[e.id]?.profile
+      if (profile) return { ...e, profile }
+    }
+    return e
+  }
+  const sizeFavs = () => getFavorites().filter(isSizeType).map(enrichSizeProfile)
+  const sizeHist = () => history().filter(isSizeType).slice(0, 3).map(enrichSizeProfile)
 
   /** Clic sur un effet */
   const handleClick = (effect: WorkshopEffect) => {

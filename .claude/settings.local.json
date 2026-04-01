@@ -49,7 +49,8 @@
       "WebFetch(domain:www.emailonacid.com)",
       "WebFetch(domain:www.litmus.com)",
       "WebFetch(domain:www.hteumeuleu.com)",
-      "Bash(xargs grep:*)"
+      "Bash(xargs grep:*)",
+      "mcp__plugin_playwright_playwright__browser_console_messages"
     ]
   }
 }
