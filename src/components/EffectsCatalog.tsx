@@ -1,5 +1,4 @@
 import { For, createSignal, createEffect, Show } from 'solid-js'
-import { sampleProfile, type ComposedEffectData } from '../engine/effects'
 import { sparklineFromProfile } from '../engine/sparkline'
 import { EffectPreview } from './EffectPreview'
 import {
@@ -11,7 +10,6 @@ import { PREVIEW_WORDS } from '../data/preview'
 import { MathFunction } from './MathFunction'
 import { ShapeCanvas } from './ShapeCanvas'
 import { ColorCreator } from './ColorCreator'
-import { ComposedCreator } from './ComposedCreator'
 import { isAdmin } from '../stores/admin'
 import { showToast } from './Toast'
 import { Modal } from './Modal'
@@ -118,7 +116,6 @@ export function EffectsCatalog(props: Props) {
   const [pendingMathExpr, setPendingMathExpr] = createSignal<string | undefined>()
   const [pendingMathParams, setPendingMathParams] = createSignal<{ a: number; b: number; c: number } | undefined>()
   const [pendingColors, setPendingColors] = createSignal<string[] | null>(null)
-  const [pendingComposed, setPendingComposed] = createSignal<ComposedEffectData | null>(null)
   let nameInputRef: HTMLInputElement | undefined
 
   createEffect(() => {
@@ -145,14 +142,6 @@ export function EffectsCatalog(props: Props) {
   const askNameForColors = (colors: string[], defaultName: string) => {
     setPendingColors(colors)
     setPendingProfile(null)
-    setPendingComposed(null)
-    openNaming(defaultName)
-  }
-
-  const askNameForComposed = (data: ComposedEffectData, defaultName: string) => {
-    setPendingComposed(data)
-    setPendingProfile(null)
-    setPendingColors(null)
     openNaming(defaultName)
   }
 
@@ -177,20 +166,12 @@ export function EffectsCatalog(props: Props) {
         label: name,
         customColors: pendingColors()!,
       })
-    } else if (pendingComposed()) {
-      addPersoEffect({
-        id,
-        type: 'composed',
-        label: name,
-        composedData: pendingComposed()!,
-      })
     } else return
 
     setCustomCount(c => c + 1)
     setNaming(false)
     setPendingProfile(null)
     setPendingColors(null)
-    setPendingComposed(null)
     setPendingMathExpr(undefined)
     setPendingMathParams(undefined)
     showToast('Effet enregistre dans votre atelier')
@@ -292,7 +273,6 @@ export function EffectsCatalog(props: Props) {
                                   customProfile={effect.profile}
                                   rawProfile={effect.rawProfile}
                                   customColors={effect.customColors}
-                                  composedData={effect.composedData}
                                   options={{ baseSize: baseSize(), amplitude: sizeAmplitude() }}
                                 />
                               </div>
@@ -332,12 +312,6 @@ export function EffectsCatalog(props: Props) {
               />
             </Section>
 
-            <Section title="Effet compose" defaultOpen={false}>
-              <p class="catalog-create-hint">Combinez taille, couleur, police et emoji en un seul effet.</p>
-              <ComposedCreator
-                onSave={(data) => askNameForComposed(data, `Compose ${customCount() + 1}`)}
-              />
-            </Section>
           </Show>
         </div>
 

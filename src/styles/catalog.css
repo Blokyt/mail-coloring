@@ -81,17 +81,6 @@
 .naming-input:focus{box-shadow:var(--shadow-x) var(--shadow-y) 0 var(--lavender)}
 .naming-actions{display:flex;gap:10px}
 
-/* ── Composed Creator ── */
-.composed-creator{display:flex;flex-direction:column;gap:14px}
-.composed-section-label{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-sm);color:var(--soft-black);text-transform:uppercase;letter-spacing:.5px}
-.composed-tag-grid{display:flex;flex-wrap:wrap;gap:8px}
-.composed-tag-grid .side-tag{min-height:auto}
-.composed-radio-group{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
-.composed-radio{display:flex;align-items:center;gap:6px;cursor:pointer;font-family:'Fredoka',sans-serif;font-weight:600;font-size:var(--font-sm);color:var(--soft-black)}
-.composed-radio input[type="radio"]{accent-color:var(--lavender);width:16px;height:16px}
-.composed-font-select{font-family:'Fredoka',sans-serif;font-size:var(--font-md);font-weight:600;padding:8px 14px;background:var(--white);color:var(--soft-black);border:var(--border) solid var(--soft-black);border-radius:var(--radius-sm);outline:none;box-shadow:var(--shadow-x) var(--shadow-y) 0 var(--shadow-color);max-width:280px;cursor:pointer}
-.composed-font-select:focus{box-shadow:var(--shadow-x) var(--shadow-y) 0 var(--lavender)}
-
 /* ── Color Creator ── */
 .color-creator{display:flex;flex-direction:column;gap:14px}
 .color-creator-label{font-family:'Fredoka',sans-serif;font-weight:700;font-size:var(--font-sm);color:var(--soft-black);text-transform:uppercase;letter-spacing:.5px}

@@ -39,26 +39,6 @@ export interface SizeEffect {
 }
 
 // ============================================
-// TYPES COMPOSES
-// ============================================
-
-export type EmojiPosition = 'before' | 'after' | 'both' | 'none'
-
-export interface EmojiDecoration {
-  emoji: string
-  position: EmojiPosition
-}
-
-/** Effet compose : combine taille + couleur + police + emoji */
-export interface ComposedEffectData {
-  sizeEffectRef?: string | null
-  colorEffectRef?: string | null
-  flatColor?: string | null
-  font?: string | null
-  emojiDecoration?: EmojiDecoration | null
-}
-
-// ============================================
 // EFFETS COULEUR PRÉDÉFINIS
 // ============================================
 
@@ -338,48 +318,6 @@ export function applySizeProfile(
   }
 
   return parts.join('')
-}
-
-/**
- * Applique un effet compose (taille + couleur + police + emoji) a du texte.
- * `resolvedColors` permet de passer une palette custom-color resolue par l'appelant.
- */
-export function applyComposedEffect(
-  text: string,
-  data: ComposedEffectData,
-  options: EffectOptions,
-  resolvedColors?: string[] | null,
-  colorMode?: ColorMode | null,
-  resolvedSizeProfile?: number[] | null,
-): string {
-  const chars = [...text]
-  const colors = resolvedColors ?? (data.flatColor ? [data.flatColor] : null)
-  const mode = colorMode ?? 'text'
-
-  const nonSpaceCount = chars.filter(c => c !== ' ').length
-  let charIdx = 0
-  const inner = chars.map(char => {
-    if (char === ' ') return ' '
-    const styles: string[] = []
-    if (colors) {
-      const prop = mode === 'bg' ? 'background-color' : 'color'
-      styles.push(`${prop}:${colors[charIdx % colors.length]}`)
-    }
-    if (resolvedSizeProfile) {
-      const t = nonSpaceCount <= 1 ? 0 : charIdx / (nonSpaceCount - 1)
-      const size = Math.max(8, Math.round(options.baseSize + options.amplitude * sampleProfile(resolvedSizeProfile, t)))
-      styles.push(`font-size:${size}px`)
-    }
-    if (data.font) styles.push(`font-family:${data.font}`)
-    charIdx++
-    return styles.length > 0 ? `<span style="${styles.join(';')}">${char}</span>` : char
-  }).join('')
-
-  const emoji = data.emojiDecoration
-  if (!emoji || emoji.position === 'none') return inner
-  const before = (emoji.position === 'before' || emoji.position === 'both') ? emoji.emoji : ''
-  const after = (emoji.position === 'after' || emoji.position === 'both') ? emoji.emoji : ''
-  return `${before}${inner}${after}`
 }
 
 /** Évaluateur safe d'expressions math en x — parseur recursive descent, zéro eval */

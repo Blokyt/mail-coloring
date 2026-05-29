@@ -1,14 +1,15 @@
 import { For, Show, createSignal } from 'solid-js'
 import { Portal } from 'solid-js/web'
-import { baseSize, setBaseSize } from '../stores/editor'
-import { sizeFavorites, addSizeFavorite, removeSizeFavorite } from '../stores/workshops'
-import { getEmojiFavorites, getEmojiRecents } from './EmojiPicker'
+import { baseSize, setBaseSize, activeFont, setActiveFont } from '../stores/editor'
+import { sizeFavorites, addSizeFavorite, removeSizeFavorite, fontFavorites, removeFontFavorite, addFontFavorite, sizeRecents, fontRecents, pushSizeRecent, pushFontRecent, removeSizeRecent, removeFontRecent } from '../stores/workshops'
+import { getEmojiFavorites, getEmojiRecents, addEmojiFavorite, removeEmojiFavorite, removeEmojiRecent } from './EmojiPicker'
 import { getToolbarColors, getActivePalette, activePaletteId, removeToolbarColor, addToolbarColor } from '../stores/palettes'
-import { applyInlineStyle, execFormatCommand, applyLink, getSelectedText, replaceSelectionWithHtml, refreshSizeEffects, resizeLiveSelection } from './Editor'
+import { applyInlineStyle, execFormatCommand, clearSelectionStyle, applyLink, getSelectedText, replaceSelectionWithHtml, refreshSizeEffects, resizeLiveSelection } from './Editor'
 import { updateBuffer, getBuffer, setPreview } from './Header'
 import { EffectsCatalog } from './EffectsCatalog'
 import type { CatalogTab } from './EffectsCatalog'
 import { FontPicker } from './FontPicker'
+import { FONTS } from '../data/fonts'
 import { EmojiPicker } from './EmojiPicker'
 import { PaletteManager } from './PaletteManager'
 import { Modal } from './Modal'
@@ -125,7 +126,6 @@ function SizeControl(props: { value: number; onChange: (v: number) => void; onDr
         </Show>
       </div>
 
-      <button class="fav-add" onClick={props.onAddFav} title="Ajouter la taille aux favoris">+</button>
     </div>
   )
 }
@@ -138,6 +138,9 @@ export function ToolbarPanel() {
   const [paletteOpen, setPaletteOpen] = createSignal(false)
   const [palettePos, setPalettePos] = createSignal({ top: 0, left: 0 })
   let paletteRef: HTMLButtonElement | undefined
+
+  // Pill sélectionnée (montre croix/étoile)
+  const [selectedPill, setSelectedPill] = createSignal<string | null>(null)
 
   // Modale lien
   const [linkOpen, setLinkOpen] = createSignal(false)
@@ -177,7 +180,7 @@ export function ToolbarPanel() {
           <button class="btn-icon" onClick={() => { execFormatCommand('italic'); updateBuffer({ italic: !getBuffer().italic }) }}><i>I</i></button>
           <button class="btn-icon" onClick={() => { execFormatCommand('underline'); updateBuffer({ underline: !getBuffer().underline }) }}><u>U</u></button>
           <button class="btn-icon" onClick={() => { execFormatCommand('strikeThrough'); updateBuffer({ strikeThrough: !getBuffer().strikeThrough }) }}><s>S</s></button>
-          <button class="btn-icon" style={{ "font-size": "var(--font-sm)" }} onClick={() => updateBuffer({ bold: false, italic: false, underline: false, strikeThrough: false, foreColor: '#374151', hiliteColor: '', fontSize: 18, fontFamily: 'Arial' })} title="Reinitialiser le style">X</button>
+          <button class="btn-icon" style={{ "font-size": "var(--font-sm)" }} onClick={() => { clearSelectionStyle(); updateBuffer({ bold: false, italic: false, underline: false, strikeThrough: false, foreColor: '#374151', hiliteColor: '', fontSize: 18, fontFamily: 'Arial' }) }} title="Reinitialiser le style">X</button>
           <button
             class="btn-icon"
             style={{ "font-size": "var(--font-sm)" }}
@@ -195,17 +198,34 @@ export function ToolbarPanel() {
             replaceSelectionWithHtml(`<span style="font-size:${size}px">${emoji}</span>`)
           }} />
           <Show when={getEmojiFavorites().length > 0 || getEmojiRecents().length > 0}>
-            <div class="fav-pills">
+            <div class="tb-pills">
               <For each={getEmojiFavorites()}>
                 {(emoji) => {
+                  const id = `emoji-fav-${emoji}`
                   const insert = () => { const s = getBuffer().fontSize || baseSize(); replaceSelectionWithHtml(`<span style="font-size:${s}px">${emoji}</span>`) }
-                  return <button class="fav-pill emoji-fav-pill" title={emoji} onClick={insert}>{emoji}</button>
+                  return (
+                    <div class="tb-pill-wrap">
+                      <button class="tb-pill tb-emoji" title={emoji} onClick={() => { insert(); setSelectedPill(p => p === id ? null : id) }}>{emoji}</button>
+                      <Show when={selectedPill() === id}>
+                        <button class="tb-pill-x" onClick={(e) => { e.stopPropagation(); removeEmojiFavorite(emoji); setSelectedPill(null) }}>×</button>
+                      </Show>
+                    </div>
+                  )
                 }}
               </For>
-              <For each={getEmojiRecents().filter(e => !getEmojiFavorites().includes(e)).slice(0, 5)}>
+              <For each={getEmojiRecents().filter(e => !getEmojiFavorites().includes(e)).slice(0, 3)}>
                 {(emoji) => {
+                  const id = `emoji-rec-${emoji}`
                   const insert = () => { const s = getBuffer().fontSize || baseSize(); replaceSelectionWithHtml(`<span style="font-size:${s}px">${emoji}</span>`) }
-                  return <button class="fav-pill emoji-fav-pill emoji-recent-pill" title={emoji} onClick={insert}>{emoji}</button>
+                  return (
+                    <div class="tb-pill-wrap">
+                      <button class="tb-pill tb-emoji tb-recent" title={emoji} onClick={() => { insert(); setSelectedPill(p => p === id ? null : id) }}>{emoji}</button>
+                      <Show when={selectedPill() === id}>
+                        <button class="tb-pill-x" onClick={(e) => { e.stopPropagation(); removeEmojiRecent(emoji); setSelectedPill(null) }}>×</button>
+                        <button class="tb-pill-star" onClick={(e) => { e.stopPropagation(); addEmojiFavorite(emoji); setSelectedPill(null) }}>★</button>
+                      </Show>
+                    </div>
+                  )
                 }}
               </For>
             </div>
@@ -257,29 +277,106 @@ x
         {/* Row 2: Font + Size + Intensity + Catalogue */}
         <div class="toolbar-row">
           <FontPicker />
+          <Show when={fontFavorites().length > 0 || fontRecents().filter(f => !fontFavorites().includes(f)).length > 0}>
+            <div class="tb-pills">
+              <For each={fontFavorites()}>
+                {(fontVal) => {
+                  const id = `font-fav-${fontVal}`
+                  const entry = () => FONTS.find(f => f.value === fontVal)
+                  const label = () => entry()?.name ?? fontVal.split(',')[0]
+                  const apply = () => { setActiveFont(fontVal); applyInlineStyle('fontFamily', fontVal); updateBuffer({ fontFamily: fontVal }) }
+                  return (
+                    <div class="tb-pill-wrap">
+                      <button
+                        class="tb-pill"
+                        style={{ "font-family": fontVal }}
+                        title={label()}
+                        onClick={() => { apply(); setSelectedPill(p => p === id ? null : id) }}
+                        onMouseEnter={() => setPreview({ fontFamily: fontVal })}
+                        onMouseLeave={() => setPreview(null)}
+                      >{label()}</button>
+                      <Show when={selectedPill() === id}>
+                        <button class="tb-pill-x" onClick={(e) => { e.stopPropagation(); removeFontFavorite(fontVal); setSelectedPill(null) }}>×</button>
+                      </Show>
+                    </div>
+                  )
+                }}
+              </For>
+              <For each={fontRecents().filter(f => !fontFavorites().includes(f)).slice(0, 3)}>
+                {(fontVal) => {
+                  const id = `font-rec-${fontVal}`
+                  const entry = () => FONTS.find(f => f.value === fontVal)
+                  const label = () => entry()?.name ?? fontVal.split(',')[0]
+                  const apply = () => { setActiveFont(fontVal); applyInlineStyle('fontFamily', fontVal); updateBuffer({ fontFamily: fontVal }) }
+                  return (
+                    <div class="tb-pill-wrap">
+                      <button
+                        class="tb-pill tb-recent"
+                        style={{ "font-family": fontVal }}
+                        title={label()}
+                        onClick={() => { apply(); setSelectedPill(p => p === id ? null : id) }}
+                        onMouseEnter={() => setPreview({ fontFamily: fontVal })}
+                        onMouseLeave={() => setPreview(null)}
+                      >{label()}</button>
+                      <Show when={selectedPill() === id}>
+                        <button class="tb-pill-x" onClick={(e) => { e.stopPropagation(); removeFontRecent(fontVal); setSelectedPill(null) }}>×</button>
+                        <button class="tb-pill-star" onClick={(e) => { e.stopPropagation(); addFontFavorite(fontVal); setSelectedPill(null) }}>★</button>
+                      </Show>
+                    </div>
+                  )
+                }}
+              </For>
+            </div>
+          </Show>
           <div class="separator" />
           <SizeControl
             value={baseSize()}
             onDrag={(v) => { setBaseSize(v); updateBuffer({ fontSize: v }); resizeLiveSelection(v); refreshSizeEffects(v) }}
-            onChange={(v) => { setBaseSize(v); updateBuffer({ fontSize: v }); resizeLiveSelection(v); refreshSizeEffects(v) }}
+            onChange={(v) => { setBaseSize(v); updateBuffer({ fontSize: v }); resizeLiveSelection(v); refreshSizeEffects(v); pushSizeRecent(v) }}
             onAddFav={() => addSizeFavorite(baseSize())}
           />
-          <Show when={sizeFavorites().length > 0}>
-            <div class="size-favs">
+          <Show when={sizeFavorites().length > 0 || sizeRecents().filter(s => !sizeFavorites().includes(s)).length > 0}>
+            <div class="tb-pills">
               <For each={sizeFavorites()}>
-                {(size) => (
-                  <div class="size-fav-chip">
-                    <button
-                      class="size-fav-value"
-                      onClick={() => { setBaseSize(size); updateBuffer({ fontSize: size }); resizeLiveSelection(size); refreshSizeEffects(size) }}
-                      onMouseEnter={() => setPreview({ fontSize: size })}
-                      onMouseLeave={() => setPreview(null)}
-                    >
-                      {size}
-                    </button>
-                    <button class="size-fav-remove" onClick={() => removeSizeFavorite(size)} title="Retirer">×</button>
-                  </div>
-                )}
+                {(size) => {
+                  const id = `size-fav-${size}`
+                  const apply = () => { setBaseSize(size); updateBuffer({ fontSize: size }); resizeLiveSelection(size); refreshSizeEffects(size) }
+                  return (
+                    <div class="tb-pill-wrap">
+                      <button
+                        class="tb-pill"
+                        title={`${size}px`}
+                        onClick={() => { apply(); setSelectedPill(p => p === id ? null : id) }}
+                        onMouseEnter={() => setPreview({ fontSize: size })}
+                        onMouseLeave={() => setPreview(null)}
+                      >{size}</button>
+                      <Show when={selectedPill() === id}>
+                        <button class="tb-pill-x" onClick={(e) => { e.stopPropagation(); removeSizeFavorite(size); setSelectedPill(null) }}>×</button>
+                      </Show>
+                    </div>
+                  )
+                }}
+              </For>
+              <For each={sizeRecents().filter(s => !sizeFavorites().includes(s)).slice(0, 3)}>
+                {(size) => {
+                  const id = `size-rec-${size}`
+                  const apply = () => { setBaseSize(size); updateBuffer({ fontSize: size }); resizeLiveSelection(size); refreshSizeEffects(size) }
+                  return (
+                    <div class="tb-pill-wrap">
+                      <button
+                        class="tb-pill tb-recent"
+                        title={`${size}px`}
+                        onClick={() => { apply(); setSelectedPill(p => p === id ? null : id) }}
+                        onMouseEnter={() => setPreview({ fontSize: size })}
+                        onMouseLeave={() => setPreview(null)}
+                      >{size}</button>
+                      <Show when={selectedPill() === id}>
+                        <button class="tb-pill-x" onClick={(e) => { e.stopPropagation(); removeSizeRecent(size); setSelectedPill(null) }}>×</button>
+                        <button class="tb-pill-star" onClick={(e) => { e.stopPropagation(); addSizeFavorite(size); setSelectedPill(null) }}>★</button>
+                      </Show>
+                    </div>
+                  )
+                }}
               </For>
             </div>
           </Show>

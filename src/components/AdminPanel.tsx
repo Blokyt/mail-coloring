@@ -189,6 +189,10 @@ export function AdminPanel() {
   // ── Emojis ──
   // ── Global save ──
   const handleSave = async () => {
+    if (!import.meta.env.DEV) {
+      showToast('Sauvegarde admin disponible uniquement en local', true)
+      return
+    }
     setSaving(true)
     // Sync CSS tweaker → adminData avant de sauver
     adminSetCss(cssValues())

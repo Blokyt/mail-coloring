@@ -2,6 +2,7 @@ import { For, Show, createSignal } from 'solid-js'
 import { Portal } from 'solid-js/web'
 import { FONTS, FONT_CATEGORIES, type FontEntry } from '../data/fonts'
 import { activeFont, setActiveFont } from '../stores/editor'
+import { pushFontRecent } from '../stores/workshops'
 import { applyInlineStyle } from './Editor'
 import { updateBuffer, setPreview } from './Header'
 
@@ -21,6 +22,7 @@ export function FontPicker() {
     setActiveFont(fontValue)
     applyInlineStyle('fontFamily', fontValue)
     updateBuffer({ fontFamily: fontValue })
+    pushFontRecent(fontValue)
     setPreview(null)
     setOpen(false)
   }

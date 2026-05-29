@@ -213,6 +213,10 @@ export function CssTweaker() {
   }
 
   const handleSaveForAll = async () => {
+    if (!import.meta.env.DEV) {
+      showToast('Sauvegarde serveur disponible uniquement en local', true)
+      return
+    }
     try {
       // Sauvegarder dans defaults.json
       const res = await fetch('/api/save-defaults', {

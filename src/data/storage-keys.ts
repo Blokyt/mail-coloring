@@ -13,6 +13,8 @@ export const KEYS = {
   // Fonts & sizes
   FONT_FAVS: 'artlequin_font_favs',
   SIZE_FAVS: 'artlequin_size_favs',
+  FONT_RECENTS: 'artlequin_font_recents',
+  SIZE_RECENTS: 'artlequin_size_recents',
 
   // Emojis
   EMOJIS_PERSO: 'artlequin_emojis_perso',

@@ -98,6 +98,7 @@ export async function loadAdminData() {
 /* ── Save to server ── */
 
 export async function saveAdminData(): Promise<boolean> {
+  if (!import.meta.env.DEV) return false
   try {
     const res = await fetch('/api/save-admin', {
       method: 'POST',

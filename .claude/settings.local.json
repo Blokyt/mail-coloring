@@ -50,7 +50,20 @@
       "WebFetch(domain:www.litmus.com)",
       "WebFetch(domain:www.hteumeuleu.com)",
       "Bash(xargs grep:*)",
-      "mcp__plugin_playwright_playwright__browser_console_messages"
+      "mcp__plugin_playwright_playwright__browser_console_messages",
+      "Bash(grep -r \"font-family\\\\|@import\\\\|@font-face\" /c/Users/bloki/Desktop/Programmation/PERSO/mail-coloring/src --include=*.css --include=*.html)",
+      "Bash(file:*)",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs",
+      "Bash(rm -rf *)",
+      "Bash(npm init:*)",
+      "Bash(pkill -f \"remotion studio\")",
+      "mcp__plugin_playwright_playwright__browser_resize",
+      "Bash(cp \"C:\\\\Users\\\\bloki\\\\.claude\\\\image-cache\\\\3b5afb88-9f3c-49b7-abe0-0a0a922c5b23\\\\1.png\" \"C:\\\\Users\\\\bloki\\\\Desktop\\\\Programmation\\\\PERSO\\\\mail-coloring\\\\promo-video\\\\public\\\\screenshots\\\\full-app.png\")",
+      "Bash(cp \"C:\\\\Users\\\\bloki\\\\.claude\\\\image-cache\\\\3b5afb88-9f3c-49b7-abe0-0a0a922c5b23\\\\2.png\" \"C:\\\\Users\\\\bloki\\\\Desktop\\\\Programmation\\\\PERSO\\\\mail-coloring\\\\promo-video\\\\public\\\\screenshots\\\\mail-content.png\")",
+      "Bash(cp \"C:\\\\Users\\\\bloki\\\\.claude\\\\image-cache\\\\3b5afb88-9f3c-49b7-abe0-0a0a922c5b23\\\\3.png\" \"C:\\\\Users\\\\bloki\\\\Desktop\\\\Programmation\\\\PERSO\\\\mail-coloring\\\\promo-video\\\\public\\\\screenshots\\\\sidebar-colors.png\")",
+      "Bash(cp \"C:\\\\Users\\\\bloki\\\\.claude\\\\image-cache\\\\3b5afb88-9f3c-49b7-abe0-0a0a922c5b23\\\\4.png\" \"C:\\\\Users\\\\bloki\\\\Desktop\\\\Programmation\\\\PERSO\\\\mail-coloring\\\\promo-video\\\\public\\\\screenshots\\\\sidebar-sizes.png\")",
+      "Bash(cp \"C:\\\\Users\\\\bloki\\\\.claude\\\\image-cache\\\\3b5afb88-9f3c-49b7-abe0-0a0a922c5b23\\\\5.png\" \"C:\\\\Users\\\\bloki\\\\Desktop\\\\Programmation\\\\PERSO\\\\mail-coloring\\\\promo-video\\\\public\\\\screenshots\\\\toolbar.png\")"
     ]
   }
 }

@@ -1,5 +1,5 @@
-import { onMount, onCleanup, createSignal } from 'solid-js'
-import { activeColorEffect, activeSizeEffect, baseSize } from '../stores/editor'
+import { onMount, onCleanup, createSignal, createEffect } from 'solid-js'
+import { activeColorEffect, activeSizeEffect, baseSize, pagesPerView, setPagesPerView } from '../stores/editor'
 import { initUndoSystem, recordOperation, recordTypingChar, flushTyping, performUndo, performRedo } from '../stores/undo-redo'
 import { activeWord, setActiveWord } from '../stores/word-inspect'
 import { sampleProfile, cleanForOutlook } from '../engine/effects'
@@ -122,8 +122,8 @@ export function applyInlineStyle(prop: string, value: string) {
 
         // Span single-char existant → modifier directement
         if (parent && parent.tagName === 'SPAN' && parent !== fragment as unknown as Element
-            && parent.childNodes.length === 1 && graphemes.length === 1
-            && graphemes[0] !== ' ' && graphemes[0] !== '\n' && graphemes[0] !== '\t') {
+          && parent.childNodes.length === 1 && graphemes.length === 1
+          && graphemes[0] !== ' ' && graphemes[0] !== '\n' && graphemes[0] !== '\t') {
           parent.style.backgroundColor = value
           continue
         }
@@ -159,8 +159,8 @@ export function applyInlineStyle(prop: string, value: string) {
         const parent = textNode.parentElement
 
         if (parent && parent.tagName === 'SPAN' && parent !== fragment as unknown as Element
-            && parent.childNodes.length === 1 && graphemes.length === 1
-            && graphemes[0] !== ' ' && graphemes[0] !== '\n' && graphemes[0] !== '\t') {
+          && parent.childNodes.length === 1 && graphemes.length === 1
+          && graphemes[0] !== ' ' && graphemes[0] !== '\n' && graphemes[0] !== '\t') {
           parent.style.fontSize = value
           continue
         }
@@ -238,6 +238,35 @@ export function removeLink() {
   editorEl.focus()
 }
 
+/** Réinitialise le style de la sélection courante (couleur, fond, taille, police, gras, italique, etc.) */
+export function clearSelectionStyle() {
+  if (!editorEl) return
+  restoreSelection()
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0) return
+  const range = sel.getRangeAt(0)
+  if (range.collapsed || !editorEl.contains(range.commonAncestorContainer)) return
+
+  const op = recordOperation('Réinitialiser le style', 'format')
+
+  // Retirer bold/italic/underline/strikethrough via execCommand
+  document.execCommand('removeFormat', false, undefined)
+
+  // Parcourir tous les spans dans la sélection pour nettoyer les styles inline
+  const spans = editorEl.querySelectorAll('span')
+  for (const span of spans) {
+    if (!sel.containsNode(span, true)) continue
+    span.style.color = ''
+    span.style.backgroundColor = ''
+    span.style.fontSize = ''
+    span.style.fontFamily = ''
+  }
+
+  op.commit()
+  editorEl.focus()
+  saveSelection()
+}
+
 export function execFormatCommand(cmd: string) {
   if (!editorEl) return
   restoreSelection()
@@ -288,7 +317,7 @@ export function applyColorToSelection(colors: string[], mode: 'text' | 'bg' = 't
 
     // Span single-grapheme existant → modifier directement
     if (parent && parent.tagName === 'SPAN' && parent !== fragment as unknown as Element
-        && parent.childNodes.length === 1 && graphemes.length === 1 && !isWS(graphemes[0])) {
+      && parent.childNodes.length === 1 && graphemes.length === 1 && !isWS(graphemes[0])) {
       if (mode === 'bg') {
         parent.style.backgroundColor = colors[charIdx % colors.length]
       } else {
@@ -375,7 +404,7 @@ export function applySizeToSelection(getOffset: (charIdx: number, total: number)
 
     // Span single-grapheme existant → modifier fontSize en place
     if (parent && parent.tagName === 'SPAN' && parent !== fragment as unknown as Element
-        && parent.childNodes.length === 1 && graphemes.length === 1 && !isWhitespace(graphemes[0])) {
+      && parent.childNodes.length === 1 && graphemes.length === 1 && !isWhitespace(graphemes[0])) {
       const offset = getOffset(charIdx, total)
       parent.style.fontSize = `${Math.max(8, Math.round(baseSize + offset))}px`
       charIdx++
@@ -597,22 +626,33 @@ export function Editor() {
   let lastVpWidth = 0 // track viewport width to avoid spurious recalcs
 
   /* Recalculate column sizing — ONLY when viewport actually resizes */
-  function updateLayout() {
+  function updateLayout(force?: boolean) {
     if (!viewportEl || !editorEl) return
     const vw = viewportEl.clientWidth
+    const ppv = pagesPerView()
     // Skip if viewport width hasn't actually changed (avoids reflow-triggered recalcs)
-    if (vw === lastVpWidth && pw > 50) return
+    if (!force && vw === lastVpWidth && pw > 50) return
     lastVpWidth = vw
 
-    pw = (vw - 2 * EDITOR_PAD - 2 * COL_GAP) / 3
+    const gaps = ppv > 1 ? ppv - 1 : 0
+    pw = (vw - 2 * EDITOR_PAD - gaps * COL_GAP) / ppv
     if (pw < 50) pw = 50
 
     const contentWidth = MAX_PAGES * pw + (MAX_PAGES - 1) * COL_GAP
     editorEl.style.width = (contentWidth + 2 * EDITOR_PAD) + 'px'
     editorEl.style.columnCount = String(MAX_PAGES)
 
-    viewportEl.style.setProperty('--sep-left-1', (EDITOR_PAD + pw + COL_GAP / 2) + 'px')
-    viewportEl.style.setProperty('--sep-left-2', (EDITOR_PAD + 2 * pw + COL_GAP + COL_GAP / 2) + 'px')
+    // Séparateurs : afficher selon le nombre de pages visibles
+    if (ppv >= 2) {
+      viewportEl.style.setProperty('--sep-left-1', (EDITOR_PAD + pw + COL_GAP / 2) + 'px')
+    } else {
+      viewportEl.style.setProperty('--sep-left-1', '-10px')
+    }
+    if (ppv >= 3) {
+      viewportEl.style.setProperty('--sep-left-2', (EDITOR_PAD + 2 * pw + COL_GAP + COL_GAP / 2) + 'px')
+    } else {
+      viewportEl.style.setProperty('--sep-left-2', '-10px')
+    }
 
     slideTo(ws)
   }
@@ -683,8 +723,14 @@ export function Editor() {
   }
 
   /* Map a page number to the correct window-start.
-     Pattern: [0,1,2], [2,3,4], [4,5,6], … */
+     ppv=3: [0,1,2], [2,3,4], [4,5,6], … (step 2)
+     ppv=2: [0,1], [1,2], [2,3], …        (step 1)
+     ppv=1: [0], [1], [2], …              (step 1) */
   function getWindowForPage(page: number): number {
+    const ppv = pagesPerView()
+    if (ppv === 1) return page
+    if (ppv === 2) return Math.max(0, page <= 1 ? 0 : page - 1)
+    // ppv === 3
     if (page < 3) return 0
     return Math.floor((page - 1) / 2) * 2
   }
@@ -697,33 +743,49 @@ export function Editor() {
       if (!editorEl) return
       void editorEl.offsetHeight
       const cp = getCursorPage()
-      if (cp < ws || cp >= ws + 3) {
+      const ppv = pagesPerView()
+      if (cp < ws || cp >= ws + ppv) {
         slideTo(getWindowForPage(cp))
       }
       computeWordAtCursor()
     })
   }
 
-  /* Slide the editor so the right 3 pages are visible — NO recursive re-check */
+  /* Slide the editor so the right pages are visible — NO recursive re-check */
   function slideTo(newWs: number) {
     if (!editorEl) return
-    ws = Math.max(0, Math.min(newWs, MAX_PAGES - 3))
+    const ppv = pagesPerView()
+    ws = Math.max(0, Math.min(newWs, MAX_PAGES - ppv))
     const offset = ws * (pw + COL_GAP)
     editorEl.style.transform = `translateX(-${offset}px)`
-    setPageLabel(`${ws + 1} – ${ws + 3}`)
+    if (ppv === 1) {
+      setPageLabel(`${ws + 1}`)
+    } else {
+      setPageLabel(`${ws + 1} – ${ws + ppv}`)
+    }
     setCanGoBack(ws > 0)
   }
 
   function goBack() {
     if (ws <= 0) return
-    slideTo(ws - 2)
+    const step = pagesPerView() === 3 ? 2 : 1
+    slideTo(ws - step)
   }
 
   function goForward() {
+    const ppv = pagesPerView()
     const lastPage = getLastUsedPage()
-    if (ws + 3 > lastPage) return // pas de pages vides au-dela du contenu
-    slideTo(ws + 2)
+    if (ws + ppv > lastPage) return
+    const step = ppv === 3 ? 2 : 1
+    slideTo(ws + step)
   }
+
+  // Recalcule le layout quand on change le nombre de pages visibles
+  createEffect(() => {
+    pagesPerView() // track the signal
+    lastVpWidth = 0 // force recalc
+    updateLayout(true)
+  })
 
   onMount(() => {
     if (editorEl) initUndoSystem(editorEl)
@@ -1116,6 +1178,29 @@ export function Editor() {
           contentEditable={true}
           spellcheck={false}
         />
+        <div class="layout-switcher">
+          <button
+            class={`layout-btn${pagesPerView() === 1 ? ' layout-btn-active' : ''}`}
+            title="1 page"
+            onClick={() => setPagesPerView(1)}
+          >
+            <svg width="14" height="10" viewBox="0 0 14 10"><rect x="4" y="0" width="6" height="10" rx="1" fill="currentColor" /></svg>
+          </button>
+          <button
+            class={`layout-btn${pagesPerView() === 2 ? ' layout-btn-active' : ''}`}
+            title="2 pages"
+            onClick={() => setPagesPerView(2)}
+          >
+            <svg width="14" height="10" viewBox="0 0 14 10"><rect x="0" y="0" width="6" height="10" rx="1" fill="currentColor" /><rect x="8" y="0" width="6" height="10" rx="1" fill="currentColor" /></svg>
+          </button>
+          <button
+            class={`layout-btn${pagesPerView() === 3 ? ' layout-btn-active' : ''}`}
+            title="3 pages"
+            onClick={() => setPagesPerView(3)}
+          >
+            <svg width="14" height="10" viewBox="0 0 14 10"><rect x="0" y="0" width="3.5" height="10" rx="1" fill="currentColor" /><rect x="5.25" y="0" width="3.5" height="10" rx="1" fill="currentColor" /><rect x="10.5" y="0" width="3.5" height="10" rx="1" fill="currentColor" /></svg>
+          </button>
+        </div>
         <div class="page-nav">
           {canGoBack() && <button class="page-nav-btn" onClick={goBack}>◂</button>}
           <span class="page-nav-label">{pageLabel()}</span>

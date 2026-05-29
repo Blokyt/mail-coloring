@@ -1,10 +1,10 @@
 import { For, Show, createSignal, createEffect, on } from 'solid-js'
-import { sampleProfile, applyComposedEffect } from '../engine/effects'
+import { sampleProfile } from '../engine/effects'
 import { adminData } from '../stores/admin-data'
 import { sparklineFromEffect } from '../engine/sparkline'
 import { baseSize, sizeAmplitude, setCustomSizeProfile } from '../stores/editor'
-import { getFavorites, getBaseEffects, getPersoEffects, history, pushHistory, type WorkshopEffect } from '../stores/workshops'
-import { getSelectedText, applyColorToSelection, applySizeToSelection, replaceSelectionWithHtml } from './Editor'
+import { getFavorites, getBaseEffects, getPersoEffects, history, pushHistory, toggleFavorite, type WorkshopEffect } from '../stores/workshops'
+import { getSelectedText, applyColorToSelection, applySizeToSelection } from './Editor'
 import { showToast } from './Toast'
 import { COLOR_ACCENTS, SIZE_ACCENTS } from '../data/accents'
 
@@ -32,13 +32,13 @@ function renderColorName(effect: WorkshopEffect): string {
 export function SidePanel(props: { side: 'left' | 'right' }) {
   const opts = () => ({ baseSize: baseSize(), amplitude: sizeAmplitude() })
   const isLeft = () => props.side === 'left'
+  const [selectedTagId, setSelectedTagId] = createSignal<string | null>(null)
 
   const isColorType = (e: WorkshopEffect) => e.type === 'color' || e.type === 'custom-color'
   const isColorText = (e: WorkshopEffect) => isColorType(e) && (e.colorMode ?? 'text') === 'text'
   const isColorBg = (e: WorkshopEffect) => isColorType(e) && e.colorMode === 'bg'
   const isSizeType = (e: WorkshopEffect) => e.type === 'size' || e.type === 'custom-size'
-  const isComposedType = (e: WorkshopEffect) => e.type === 'composed'
-  const matchesSide = (e: WorkshopEffect) => isComposedType(e) || (isLeft() ? isColorType(e) : isSizeType(e))
+  const matchesSide = (e: WorkshopEffect) => isLeft() ? isColorType(e) : isSizeType(e)
 
   // ── Effets couleur : tous (base + perso fusionnés) ──
   const allTextEffects = () => [
@@ -135,23 +135,6 @@ export function SidePanel(props: { side: 'left' | 'right' }) {
           opts().baseSize,
           `Taille : ${effect.label}`
         )
-      } else if (effect.type === 'composed' && effect.composedData) {
-        pushHistory(effect)
-        let resolvedColors: string[] | null = null
-        const cRef = effect.composedData.colorEffectRef
-        if (cRef) {
-          const perso = getPersoEffects().find(e => e.id === cRef)
-          if (perso?.customColors) {
-            resolvedColors = perso.customColors
-          } else {
-            resolvedColors = adminData().colorEffects[cRef]?.colors ?? null
-          }
-        }
-        const resolvedSize = effect.composedData.sizeEffectRef
-          ? adminData().sizeEffects?.[effect.composedData.sizeEffectRef]?.profile ?? null
-          : null
-        const html = applyComposedEffect(text, effect.composedData, opts(), resolvedColors, null, resolvedSize)
-        replaceSelectionWithHtml(html, `Composé : ${effect.label}`)
       }
       showToast('Effet applique !')
     } else {
@@ -190,35 +173,64 @@ export function SidePanel(props: { side: 'left' | 'right' }) {
 
   // ── Tag rendering ──
 
+  const TagOverlay = (p: { effect: WorkshopEffect }) => {
+    const isFav = () => p.effect.isFavorite
+    return (
+      <Show when={selectedTagId() === p.effect.id}>
+        <Show when={isFav()}>
+          <button class="side-tag-x" onClick={(e) => { e.stopPropagation(); toggleFavorite(p.effect.id, p.effect.source); setSelectedTagId(null) }}>×</button>
+        </Show>
+        <Show when={!isFav()}>
+          <button class="side-tag-star" onClick={(e) => { e.stopPropagation(); toggleFavorite(p.effect.id, p.effect.source); setSelectedTagId(null) }}>★</button>
+        </Show>
+      </Show>
+    )
+  }
+
+  const handleTagClick = (effect: WorkshopEffect) => {
+    if (selectedTagId() === effect.id) {
+      setSelectedTagId(null)
+      return
+    }
+    handleClick(effect)
+    setSelectedTagId(effect.id)
+  }
+
   const ColorTag = (p: { effect: WorkshopEffect; extra?: string }) => (
-    <button
-      class={tagClass(p.effect.id, p.extra)}
-      style={accentShadow(p.effect.id)}
-      innerHTML={renderColorName(p.effect)}
-      onClick={() => handleClick(p.effect)}
-      title={p.effect.label}
-    />
+    <div class="side-tag-wrap">
+      <button
+        class={tagClass(p.effect.id, p.extra)}
+        style={accentShadow(p.effect.id)}
+        innerHTML={renderColorName(p.effect)}
+        onClick={() => handleTagClick(p.effect)}
+        title={p.effect.label}
+      />
+      <TagOverlay effect={p.effect} />
+    </div>
   )
 
   const SizeTag = (p: { effect: WorkshopEffect; extra?: string }) => (
-    <button
-      class={tagClass(p.effect.id, p.extra)}
-      style={accentShadow(p.effect.id)}
-      onClick={() => handleClick(p.effect)}
-      title={p.effect.label}
-    >
-      <span class="side-tag-name">{p.effect.label}</span>
-      <svg class="side-tag-sparkline" viewBox="0 0 100 24" preserveAspectRatio="none">
-        <path
-          d={sparklineFromEffect(p.effect)}
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        />
-      </svg>
-    </button>
+    <div class="side-tag-wrap">
+      <button
+        class={tagClass(p.effect.id, p.extra)}
+        style={accentShadow(p.effect.id)}
+        onClick={() => handleTagClick(p.effect)}
+        title={p.effect.label}
+      >
+        <span class="side-tag-name">{p.effect.label}</span>
+        <svg class="side-tag-sparkline" viewBox="0 0 100 24" preserveAspectRatio="none">
+          <path
+            d={sparklineFromEffect(p.effect)}
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </button>
+      <TagOverlay effect={p.effect} />
+    </div>
   )
 
   const EffectTag = (p: { effect: WorkshopEffect; extra?: string }) =>

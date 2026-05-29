@@ -1,13 +1,12 @@
 import { createSignal } from 'solid-js'
 import { getEffectiveColorEffects, getEffectiveBgEffects } from '../engine/effects'
-import type { ComposedEffectData } from '../engine/effects'
 import { adminData } from './admin-data'
 
 // ── Types ──
 
 export type WorkshopSource = 'base' | 'online' | 'perso'
 
-export type EffectType = 'color' | 'size' | 'custom-size' | 'custom-color' | 'composed'
+export type EffectType = 'color' | 'size' | 'custom-size' | 'custom-color'
 
 export interface WorkshopEffect {
   id: string
@@ -22,8 +21,6 @@ export interface WorkshopEffect {
   mathParams?: { a: number; b: number; c: number }
   /** Pour custom-color : palette definie par l'utilisateur */
   customColors?: string[]
-  /** Pour composed : donnees de l'effet compose */
-  composedData?: ComposedEffectData
   colorMode?: 'text' | 'bg'
   isFavorite: boolean
   createdAt?: number
@@ -258,5 +255,41 @@ export function removeSizeFavorite(size: number) {
   localStorage.setItem(SIZE_FAVS_KEY, JSON.stringify(updated))
 }
 
-export { history, fontFavorites, sizeFavorites }
+// ── Recents taille & police ──
+
+const SIZE_RECENTS_KEY = 'artlequin_size_recents'
+const [sizeRecents, setSizeRecents] = createSignal<number[]>(
+  load(SIZE_RECENTS_KEY, [])
+)
+
+export function pushSizeRecent(size: number) {
+  const updated = [size, ...sizeRecents().filter(s => s !== size)].slice(0, 3)
+  setSizeRecents(updated)
+  localStorage.setItem(SIZE_RECENTS_KEY, JSON.stringify(updated))
+}
+
+export function removeSizeRecent(size: number) {
+  const updated = sizeRecents().filter(s => s !== size)
+  setSizeRecents(updated)
+  localStorage.setItem(SIZE_RECENTS_KEY, JSON.stringify(updated))
+}
+
+const FONT_RECENTS_KEY = 'artlequin_font_recents'
+const [fontRecents, setFontRecents] = createSignal<string[]>(
+  load(FONT_RECENTS_KEY, [])
+)
+
+export function pushFontRecent(font: string) {
+  const updated = [font, ...fontRecents().filter(f => f !== font)].slice(0, 3)
+  setFontRecents(updated)
+  localStorage.setItem(FONT_RECENTS_KEY, JSON.stringify(updated))
+}
+
+export function removeFontRecent(font: string) {
+  const updated = fontRecents().filter(f => f !== font)
+  setFontRecents(updated)
+  localStorage.setItem(FONT_RECENTS_KEY, JSON.stringify(updated))
+}
+
+export { history, fontFavorites, sizeFavorites, sizeRecents, fontRecents }
 export { setOnlineEffects }

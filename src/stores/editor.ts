@@ -15,6 +15,9 @@ const [activeFont, setActiveFont] = createSignal('Arial, sans-serif')
 // Profil de taille personnalisé (tracé souris ou fonction math)
 const [customSizeProfile, setCustomSizeProfile] = createSignal<number[] | null>(null)
 
+// Nombre de pages visibles simultanément (1, 2 ou 3)
+const [pagesPerView, setPagesPerView] = createSignal<1 | 2 | 3>(3)
+
 export {
   activeColorEffect, setActiveColorEffect,
   activeSizeEffect, setActiveSizeEffect,
@@ -22,4 +25,5 @@ export {
   sizeAmplitude, setSizeAmplitude,
   activeFont, setActiveFont,
   customSizeProfile, setCustomSizeProfile,
+  pagesPerView, setPagesPerView,
 }

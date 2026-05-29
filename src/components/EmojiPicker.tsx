@@ -42,6 +42,19 @@ function pushRecent(emoji: string) {
 
 export function getEmojiFavorites(): string[] { return favs() }
 export function getEmojiRecents(): string[] { return recents() }
+export function addEmojiFavorite(emoji: string) {
+  if (favs().includes(emoji)) return
+  const updated = [...favs(), emoji]
+  setFavs(updated); saveList(FAVS_KEY, updated)
+}
+export function removeEmojiFavorite(emoji: string) {
+  const updated = favs().filter(e => e !== emoji)
+  setFavs(updated); saveList(FAVS_KEY, updated)
+}
+export function removeEmojiRecent(emoji: string) {
+  const updated = recents().filter(e => e !== emoji)
+  setRecents(updated); saveList(RECENTS_KEY, updated)
+}
 
 /* ── Composant ── */
 

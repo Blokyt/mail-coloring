@@ -1,4 +1,4 @@
-import { applyEffects, applySizeProfile, applyComposedEffect, type EffectOptions, type ComposedEffectData, type ColorMode } from '../engine/effects'
+import { applyEffects, applySizeProfile, type EffectOptions, type ColorMode } from '../engine/effects'
 import { adminData } from '../stores/admin-data'
 
 interface Props {
@@ -8,7 +8,6 @@ interface Props {
   sizeProfile?: number[] | null
   customProfile?: number[] | null
   customColors?: string[] | null
-  composedData?: ComposedEffectData | null
   rawProfile?: boolean
   options?: Partial<EffectOptions>
 }
@@ -43,15 +42,6 @@ export function EffectPreview(props: Props) {
   const opts = () => ({ ...DEFAULT_OPTS, ...props.options })
 
   const html = () => {
-    // Composed effect
-    if (props.composedData) {
-      let resolvedColors: string[] | null = null
-      if (props.composedData.colorEffectRef) {
-        resolvedColors = adminData().colorEffects[props.composedData.colorEffectRef]?.colors ?? null
-      }
-      const resolvedSize = resolveSizeProfile(props.composedData.sizeEffectRef)
-      return applyComposedEffect(props.text, props.composedData, opts(), resolvedColors, null, resolvedSize)
-    }
     // Custom colors (palette cycling)
     if (props.customColors && props.customColors.length > 0) {
       return applyCustomColors(props.text, props.customColors)
