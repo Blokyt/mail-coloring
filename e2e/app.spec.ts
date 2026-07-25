@@ -16,7 +16,7 @@
 import { test, expect } from '@playwright/test'
 import {
   EDITOR, watchErrors, typeInEditor, selectChars,
-  editorHtml, checkInvariant, effectSizes,
+  editorHtml, checkInvariant, effectSizes, setSizeViaSlider,
 } from './helpers'
 
 test.beforeEach(async ({ page }) => {
@@ -86,11 +86,7 @@ const ACTIONS: Record<string, (page: import('@playwright/test').Page) => Promise
   italique: async (p) => { await p.locator('.toolbar-panel button', { hasText: 'I' }).first().click() },
   couleur: async (p) => { await p.locator('.swatch').first().click() },
   effet: async (p) => { await p.locator('.side-panel-right .side-tag').first().click() },
-  taille40: async (p) => {
-    await p.locator('.slider-group input[type=range]').fill('40')
-    await p.locator('.slider-group input[type=range]').dispatchEvent('change')
-    await p.waitForTimeout(60)
-  },
+  taille40: async (p) => { await setSizeViaSlider(p, 40) },
 }
 
 /** Rejoue une séquence depuis une app VIERGE.
@@ -172,9 +168,7 @@ test('après réinitialisation du style, la taille redevient modifiable', async 
   expect(await page.locator(`${EDITOR} [data-size-effect]`).count()).toBe(0)
 
   await selectChars(page, 0, 7)
-  await page.locator('.slider-group input[type=range]').fill('44')
-  await page.locator('.slider-group input[type=range]').dispatchEvent('change')
-  await page.waitForTimeout(80)
+  await setSizeViaSlider(page, 44)
 
   const sizes = await page.evaluate((sel) => {
     const root = document.querySelector(sel) as HTMLElement

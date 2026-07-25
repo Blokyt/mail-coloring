@@ -86,3 +86,23 @@ export async function effectSizes(page: Page): Promise<number[]> {
     )
   }, EDITOR)
 }
+
+/* Le slider de taille est LOGARITHMIQUE (voir ToolbarPanel) : sa valeur DOM
+   est une position de piste 0-1000, pas des pixels. Un fill('40') reglerait
+   donc la taille a 7px, pas a 40. */
+const SIZE_MIN = 6
+const SIZE_MAX = 200
+const SLIDER_STEPS = 1000
+
+export function sizeToSliderPos(px: number): number {
+  const clamped = Math.min(SIZE_MAX, Math.max(SIZE_MIN, px))
+  return Math.round((Math.log(clamped / SIZE_MIN) / Math.log(SIZE_MAX / SIZE_MIN)) * SLIDER_STEPS)
+}
+
+/** Regle la taille de base via le slider, en pixels de police */
+export async function setSizeViaSlider(page: Page, px: number) {
+  const slider = page.locator('.slider-group input[type=range]')
+  await slider.fill(String(sizeToSliderPos(px)))
+  await slider.dispatchEvent('change')
+  await page.waitForTimeout(60)
+}

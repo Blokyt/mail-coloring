@@ -21,9 +21,28 @@ const WORD_SIZES = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 22, 24, 
 
 /* Le slider couvre TOUTE la plage saisissable. Avant il était plafonné à 72
    alors que le dropdown allait à 120 et la saisie à 200 : choisir 100 puis
-   toucher le slider faisait retomber brutalement la taille à 72. */
+   toucher le slider faisait retomber brutalement la taille à 72.
+
+   Mais 6→200 sur une piste de ~90px donnerait plus de 2px de police par
+   pixel de souris, donc aucune précision là où on travaille vraiment
+   (10-40px). La piste est donc LOGARITHMIQUE : chaque pixel change la
+   taille d'un pourcentage constant. On garde toute la plage ET une
+   précision fine dans les petites tailles. */
 const SIZE_MIN = 6
 const SIZE_MAX = 200
+const SLIDER_STEPS = 1000
+const LOG_SPAN = Math.log(SIZE_MAX / SIZE_MIN)
+
+/** Position de piste → taille en px */
+function posToSize(pos: number): number {
+  return Math.round(SIZE_MIN * Math.exp((pos / SLIDER_STEPS) * LOG_SPAN))
+}
+
+/** Taille en px → position de piste */
+function sizeToPos(size: number): number {
+  const clamped = Math.min(SIZE_MAX, Math.max(SIZE_MIN, size))
+  return Math.round((Math.log(clamped / SIZE_MIN) / LOG_SPAN) * SLIDER_STEPS)
+}
 
 function SizeControl(props: { value: number; onChange: (v: number) => void; onDrag: (v: number) => void; onAddFav: () => void }) {
   const [editing, setEditing] = createSignal(false)
@@ -74,11 +93,11 @@ function SizeControl(props: { value: number; onChange: (v: number) => void; onDr
       <span class="slider-label">Taille</span>
       <input
         type="range"
-        min={SIZE_MIN}
-        max={SIZE_MAX}
-        value={Math.min(SIZE_MAX, Math.max(SIZE_MIN, props.value))}
-        onInput={(e) => props.onDrag(parseInt(e.currentTarget.value))}
-        onChange={(e) => props.onChange(parseInt(e.currentTarget.value))}
+        min="0"
+        max={SLIDER_STEPS}
+        value={sizeToPos(props.value)}
+        onInput={(e) => props.onDrag(posToSize(parseInt(e.currentTarget.value)))}
+        onChange={(e) => props.onChange(posToSize(parseInt(e.currentTarget.value)))}
       />
 
       <div class="size-control-wrap" ref={wrapRef}>
