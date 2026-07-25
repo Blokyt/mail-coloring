@@ -23,6 +23,9 @@ export interface AdminData {
   effectsInitialized: boolean
   colorEffects: Record<string, AdminColorEffect>
   sizeEffects: Record<string, AdminSizeEffect>
+  /** Emojis fournis par l'admin — le champ manquait au type alors que
+   *  getBaseEmojis() le lisait, donc l'appel plantait sur un undefined. */
+  emojis: AdminEmoji[]
   css: Record<string, string | number>
 }
 
@@ -30,6 +33,7 @@ const EMPTY: AdminData = {
   effectsInitialized: false,
   colorEffects: {},
   sizeEffects: {},
+  emojis: [],
   css: {},
 }
 

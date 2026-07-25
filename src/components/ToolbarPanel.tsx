@@ -1,10 +1,10 @@
 import { For, Show, createSignal } from 'solid-js'
 import { Portal } from 'solid-js/web'
-import { baseSize, setBaseSize, activeFont, setActiveFont } from '../stores/editor'
-import { sizeFavorites, addSizeFavorite, removeSizeFavorite, fontFavorites, removeFontFavorite, addFontFavorite, sizeRecents, fontRecents, pushSizeRecent, pushFontRecent, removeSizeRecent, removeFontRecent } from '../stores/workshops'
+import { baseSize, setBaseSize, setActiveFont } from '../stores/editor'
+import { sizeFavorites, addSizeFavorite, removeSizeFavorite, fontFavorites, removeFontFavorite, addFontFavorite, sizeRecents, fontRecents, pushSizeRecent, removeSizeRecent, removeFontRecent } from '../stores/workshops'
 import { getEmojiFavorites, getEmojiRecents, addEmojiFavorite, removeEmojiFavorite, removeEmojiRecent } from './EmojiPicker'
-import { getToolbarColors, getActivePalette, activePaletteId, removeToolbarColor, addToolbarColor } from '../stores/palettes'
-import { applyInlineStyle, execFormatCommand, clearSelectionStyle, applyLink, getSelectedText, replaceSelectionWithHtml, refreshSizeEffects, resizeLiveSelection } from './Editor'
+import { getToolbarColors, removeToolbarColor, addToolbarColor } from '../stores/palettes'
+import { applyInlineStyle, execFormatCommand, clearSelectionStyle, applyLink, getSelectedText, replaceSelectionWithHtml, previewBaseSize, commitBaseSize } from './Editor'
 import { updateBuffer, getBuffer, setPreview } from './Header'
 import { EffectsCatalog } from './EffectsCatalog'
 import type { CatalogTab } from './EffectsCatalog'
@@ -18,6 +18,31 @@ import { showToast } from './Toast'
 /* ── SizeControl — slider + dropdown Word + input manuel ── */
 
 const WORD_SIZES = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 22, 24, 26, 28, 30, 32, 36, 40, 44, 48, 54, 60, 66, 72, 80, 90, 100, 120]
+
+/* Le slider couvre TOUTE la plage saisissable. Avant il était plafonné à 72
+   alors que le dropdown allait à 120 et la saisie à 200 : choisir 100 puis
+   toucher le slider faisait retomber brutalement la taille à 72.
+
+   Mais 6→200 sur une piste de ~90px donnerait plus de 2px de police par
+   pixel de souris, donc aucune précision là où on travaille vraiment
+   (10-40px). La piste est donc LOGARITHMIQUE : chaque pixel change la
+   taille d'un pourcentage constant. On garde toute la plage ET une
+   précision fine dans les petites tailles. */
+const SIZE_MIN = 6
+const SIZE_MAX = 200
+const SLIDER_STEPS = 1000
+const LOG_SPAN = Math.log(SIZE_MAX / SIZE_MIN)
+
+/** Position de piste → taille en px */
+function posToSize(pos: number): number {
+  return Math.round(SIZE_MIN * Math.exp((pos / SLIDER_STEPS) * LOG_SPAN))
+}
+
+/** Taille en px → position de piste */
+function sizeToPos(size: number): number {
+  const clamped = Math.min(SIZE_MAX, Math.max(SIZE_MIN, size))
+  return Math.round((Math.log(clamped / SIZE_MIN) / LOG_SPAN) * SLIDER_STEPS)
+}
 
 function SizeControl(props: { value: number; onChange: (v: number) => void; onDrag: (v: number) => void; onAddFav: () => void }) {
   const [editing, setEditing] = createSignal(false)
@@ -68,11 +93,11 @@ function SizeControl(props: { value: number; onChange: (v: number) => void; onDr
       <span class="slider-label">Taille</span>
       <input
         type="range"
-        min="8"
-        max="72"
-        value={Math.min(72, Math.max(8, props.value))}
-        onInput={(e) => props.onDrag(parseInt(e.currentTarget.value))}
-        onChange={(e) => props.onChange(parseInt(e.currentTarget.value))}
+        min="0"
+        max={SLIDER_STEPS}
+        value={sizeToPos(props.value)}
+        onInput={(e) => props.onDrag(posToSize(parseInt(e.currentTarget.value)))}
+        onChange={(e) => props.onChange(posToSize(parseInt(e.currentTarget.value)))}
       />
 
       <div class="size-control-wrap" ref={wrapRef}>
@@ -331,8 +356,8 @@ x
           <div class="separator" />
           <SizeControl
             value={baseSize()}
-            onDrag={(v) => { setBaseSize(v); updateBuffer({ fontSize: v }); resizeLiveSelection(v); refreshSizeEffects(v) }}
-            onChange={(v) => { setBaseSize(v); updateBuffer({ fontSize: v }); resizeLiveSelection(v); refreshSizeEffects(v); pushSizeRecent(v) }}
+            onDrag={(v) => { setBaseSize(v); updateBuffer({ fontSize: v }); previewBaseSize(v) }}
+            onChange={(v) => { setBaseSize(v); updateBuffer({ fontSize: v }); commitBaseSize(v); pushSizeRecent(v) }}
             onAddFav={() => addSizeFavorite(baseSize())}
           />
           <Show when={sizeFavorites().length > 0 || sizeRecents().filter(s => !sizeFavorites().includes(s)).length > 0}>
@@ -340,7 +365,7 @@ x
               <For each={sizeFavorites()}>
                 {(size) => {
                   const id = `size-fav-${size}`
-                  const apply = () => { setBaseSize(size); updateBuffer({ fontSize: size }); resizeLiveSelection(size); refreshSizeEffects(size) }
+                  const apply = () => { setBaseSize(size); updateBuffer({ fontSize: size }); commitBaseSize(size) }
                   return (
                     <div class="tb-pill-wrap">
                       <button
@@ -360,7 +385,7 @@ x
               <For each={sizeRecents().filter(s => !sizeFavorites().includes(s)).slice(0, 3)}>
                 {(size) => {
                   const id = `size-rec-${size}`
-                  const apply = () => { setBaseSize(size); updateBuffer({ fontSize: size }); resizeLiveSelection(size); refreshSizeEffects(size) }
+                  const apply = () => { setBaseSize(size); updateBuffer({ fontSize: size }); commitBaseSize(size) }
                   return (
                     <div class="tb-pill-wrap">
                       <button

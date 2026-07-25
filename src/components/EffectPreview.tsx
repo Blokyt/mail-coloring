@@ -1,5 +1,6 @@
 import { applyEffects, applySizeProfile, type EffectOptions, type ColorMode } from '../engine/effects'
 import { adminData } from '../stores/admin-data'
+import { resolveSizeProfile } from '../stores/size-profiles'
 
 interface Props {
   text: string
@@ -8,11 +9,10 @@ interface Props {
   sizeProfile?: number[] | null
   customProfile?: number[] | null
   customColors?: string[] | null
-  rawProfile?: boolean
   options?: Partial<EffectOptions>
 }
 
-const DEFAULT_OPTS: EffectOptions = { baseSize: 18, amplitude: 20 }
+const DEFAULT_OPTS: EffectOptions = { baseSize: 18, amplitude: 18 }
 
 /** Applique une palette cycling sur du texte */
 function applyCustomColors(text: string, colors: string[]): string {
@@ -32,11 +32,6 @@ function resolveColorConfig(id: string | null | undefined): { colors: string[], 
   return e ? { colors: e.colors } : null
 }
 
-/** Résout un ID d'effet taille depuis adminData (source unique de vérité) */
-function resolveSizeProfile(id: string | null | undefined): number[] | null {
-  if (!id) return null
-  return adminData().sizeEffects?.[id]?.profile ?? null
-}
 
 export function EffectPreview(props: Props) {
   const opts = () => ({ ...DEFAULT_OPTS, ...props.options })
@@ -49,7 +44,7 @@ export function EffectPreview(props: Props) {
     // Custom size profile
     const profile = props.sizeProfile ?? props.customProfile
     if (profile && profile.length > 0) {
-      return applySizeProfile(props.text, profile, opts(), resolveColorConfig(props.colorEffectId), props.rawProfile)
+      return applySizeProfile(props.text, profile, opts(), resolveColorConfig(props.colorEffectId))
     }
     // Predefined effects
     return applyEffects(

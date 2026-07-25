@@ -30,3 +30,7 @@ dist-ssr
 
 # Playwright MCP
 .playwright-mcp/
+
+# tests
+test-results/
+playwright-report/

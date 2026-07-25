@@ -257,9 +257,7 @@ export function applyEffects(
     }
 
     if (sizeProfile) {
-      const t = nonSpaceCount <= 1 ? 0 : charIdx / (nonSpaceCount - 1)
-      const shape = sampleProfile(sizeProfile, t)
-      const size = Math.max(8, Math.round(options.baseSize + options.amplitude * shape))
+      const size = sizeFromProfile(sizeProfile, charT(charIdx, nonSpaceCount), options.baseSize, options.amplitude)
       styles.push(`font-size:${size}px`)
     }
 
@@ -277,15 +275,13 @@ export function applyEffects(
 
 /**
  * Applique un profil de taille personnalisé.
- * Si raw=false (defaut) : profil [0,1], fontSize = baseSize + amplitude * value
- * Si raw=true : profil en offsets px bruts, fontSize = baseSize + value
+ * Le profil est TOUJOURS une forme [0,1] — voir normalizeProfile().
  */
 export function applySizeProfile(
   text: string,
   profile: number[],
   options: EffectOptions,
   colorConfig?: { colors: string[], mode?: ColorMode } | null,
-  raw?: boolean,
 ): string {
   const chars = [...text]
   const nonSpaceChars = chars.filter(c => c !== ' ')
@@ -302,9 +298,7 @@ export function applySizeProfile(
       continue
     }
 
-    const value = interpolateProfile(profile, charIdx, total)
-
-    const size = Math.max(8, Math.round(options.baseSize + (raw ? value : options.amplitude * value)))
+    const size = sizeFromProfile(profile, charT(charIdx, total), options.baseSize, options.amplitude)
     const styles: string[] = [`font-size:${size}px`]
 
     if (colorConfig) {
@@ -454,26 +448,41 @@ function parseMathExpr(expr: string, x: number): number {
   return result
 }
 
-/** Normalise un profil de taille : min→0, max→amplitude.
- * Garantit que la plus grande lettre = baseSize + amplitude,
- * la plus petite = baseSize. Fonctionne pour tout type de profil
- * (MathFunction brut ou ShapeCanvas [0,1]). */
-export function normalizeProfile(values: number[], amplitude: number): number[] {
+/**
+ * Normalise un profil de taille en FORME pure [0,1] : min→0, max→1.
+ *
+ * UNITE UNIQUE DU PROJET : un profil ne contient jamais de pixels.
+ * C'est toujours une forme sans dimension, et la seule formule de rendu
+ * est sizeFromProfile() ci-dessous. L'amplitude n'est appliquee qu'au
+ * moment du rendu, jamais cuite dans le tableau.
+ */
+export function normalizeProfile(values: number[]): number[] {
   const min = Math.min(...values)
   const max = Math.max(...values)
   const range = max - min
   if (range < 1e-10) return values.map(() => 0)
-  return values.map(v => amplitude * (v - min) / range)
+  return values.map(v => (v - min) / range)
+}
+
+/** Taille minimale absolue en px — un caractere n'est jamais plus petit */
+export const MIN_FONT_SIZE = 8
+
+/**
+ * FORMULE UNIQUE de rendu d'un profil de taille.
+ * Tout le code (application, refresh live, previews, sparklines) passe par ici.
+ */
+export function sizeFromProfile(profile: number[], t: number, baseSize: number, amplitude: number): number {
+  return Math.max(MIN_FONT_SIZE, Math.round(baseSize + amplitude * sampleProfile(profile, t)))
+}
+
+/** Position normalisee t dans [0,1] d'un caractere parmi `total` */
+export function charT(charIdx: number, total: number): number {
+  return total <= 1 ? 0 : charIdx / (total - 1)
 }
 
 /** Interpole une valeur dans un profil normalise [0..1] */
 export function interpolateProfile(profile: number[], charIdx: number, total: number): number {
-  const t = total === 1 ? 0 : charIdx / (total - 1)
-  const pIdx = t * (profile.length - 1)
-  const lo = Math.floor(pIdx)
-  const hi = Math.min(lo + 1, profile.length - 1)
-  const frac = pIdx - lo
-  return profile[lo] * (1 - frac) + profile[hi] * frac
+  return sampleProfile(profile, charT(charIdx, total))
 }
 
 /** Convertit toute couleur CSS (rgb, rgba, hex, named) en hex 6 digits.
@@ -634,7 +643,10 @@ export function cleanForOutlook(html: string): string {
     if (isSpace && last && last.type === 'run' && (last.text === ' ' || last.text === '\u00A0' || /^[\s\u00A0]+$/.test(last.text))) {
       last.text += tok.text
     } else {
-      runs.push({ type: 'run', ...tok })
+      // `type` APRES le spread : sinon `...tok` r\u00E9\u00E9crit le discriminant \u00E0
+      // 'char', le test `last.type === 'run'` ci-dessus n'\u00E9tait jamais vrai
+      // et les espaces cons\u00E9cutives n'\u00E9taient jamais fusionn\u00E9es.
+      runs.push({ ...tok, type: 'run' as const })
     }
   }
 

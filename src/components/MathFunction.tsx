@@ -1,5 +1,5 @@
 import { createSignal, createEffect, For } from 'solid-js'
-import { evaluateMathExprSafe, normalizeProfile } from '../engine/effects'
+import { evaluateMathExprSafe, normalizeProfile, MIN_FONT_SIZE } from '../engine/effects'
 import { baseSize, sizeAmplitude } from '../stores/editor'
 import { PREVIEW_SHORT } from '../data/preview'
 
@@ -44,12 +44,13 @@ export function MathFunction(props: Props) {
   const [c, setC] = createSignal(0)    // debut du domaine
 
   /**
-   * Formule : fontSize(i) = baseSize + offset(i)
-   * offset normalisé via normalizeProfile : min→0, max→amplitude.
-   * Params utilisateur : amplitude (toolbar), b, c.
+   * Formule : fontSize(i) = baseSize + amplitude · forme(i)
+   * La FORME seule est enregistrée (min→0, max→1). L'amplitude est appliquée
+   * au rendu, jamais cuite dans le profil : le même dessin donne le même
+   * effet quelle que soit la taille du slider au moment de la création.
    */
 
-  /** Profil = offsets normalisés pour 50 samples sur [0, n-1] */
+  /** Profil = forme [0,1] sur 50 samples couvrant [0, n-1] */
   const getProfile = (): number[] => {
     const n = [...PREVIEW_TEXT].filter(ch => ch !== ' ').length
     const samples = 50
@@ -57,16 +58,17 @@ export function MathFunction(props: Props) {
       const i = (s / (samples - 1)) * (n - 1)
       return evaluateMathExprSafe(expr(), b() * (i - c()))
     })
-    return normalizeProfile(raw, sizeAmplitude())
+    return normalizeProfile(raw)
   }
 
-  /** Preview normalisée : la plus grande lettre = baseSize + amplitude */
+  /** Preview : la plus grande lettre = baseSize + amplitude */
   const previewHtml = (): string => {
     const chars = [...PREVIEW_TEXT].filter(ch => ch !== ' ')
     const raw = chars.map((_, i) => evaluateMathExprSafe(expr(), b() * (i - c())))
-    const offsets = normalizeProfile(raw, sizeAmplitude())
+    const shape = normalizeProfile(raw)
+    const amp = sizeAmplitude()
     return chars.map((ch, i) => {
-      const size = Math.max(8, Math.round(baseSize() + offsets[i]))
+      const size = Math.max(MIN_FONT_SIZE, Math.round(baseSize() + amp * shape[i]))
       return `<span style="font-size:${size}px">${ch}</span>`
     }).join('')
   }
@@ -87,14 +89,14 @@ export function MathFunction(props: Props) {
     ctx.strokeStyle = CANVAS_GRID; ctx.lineWidth = 1
     for (let y = 0; y < h; y += 25) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke() }
 
-    // Valeurs normalisées : min→0, max→amplitude
+    // Courbe tracée en px d'offset : forme [0,1] × amplitude courante
     const amp = sizeAmplitude()
     const rawValues: number[] = []
     for (let i = 0; i < samples; i++) {
       const idx = (i / (samples - 1)) * (n - 1)
       rawValues.push(evaluateMathExprSafe(expr(), b() * (idx - c())))
     }
-    const values = normalizeProfile(rawValues, amp)
+    const values = normalizeProfile(rawValues).map(v => amp * v)
     const minV = Math.min(...values, 0), maxV = Math.max(...values, 0)
     const range = maxV - minV || 1
 

@@ -45,7 +45,7 @@ export async function fetchOnlineEffects(): Promise<WorkshopEffect[]> {
   return []
 }
 
-export async function createOnlineEffect(payload: OnlineEffectPayload): Promise<WorkshopEffect | null> {
+export async function createOnlineEffect(_payload: OnlineEffectPayload): Promise<WorkshopEffect | null> {
   if (!isConnected()) return null
   // TODO: supabase.from('effects').insert(payload).select().single()
   return null

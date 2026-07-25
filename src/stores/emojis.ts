@@ -45,7 +45,8 @@ function savePerso(entries: EmojiEntry[]) {
 // ── Getters ──
 
 export function getBaseEmojis(): EmojiEntry[] {
-  return adminData().emojis.map(e => ({ ...e, source: 'base' as const }))
+  // admin-data.json peut ne pas contenir le champ (fichier antérieur)
+  return (adminData().emojis ?? []).map(e => ({ ...e, source: 'base' as const }))
 }
 
 export function getPersoEmojis(): EmojiEntry[] {

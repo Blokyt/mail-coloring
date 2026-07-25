@@ -1,5 +1,5 @@
 import { createSignal, Show } from 'solid-js'
-import { getEditorEl, getAllEditorHtml, getAllEditorText, setActiveWordLink } from './Editor'
+import { getAllEditorHtml, setActiveWordLink } from './Editor'
 import { activeWord } from '../stores/word-inspect'
 import { performUndo, performRedo, canUndo, canRedo, undoLabel, redoLabel } from '../stores/undo-redo'
 import { showToast } from './Toast'
@@ -116,7 +116,7 @@ function LinkIndicator() {
   }
 
   return (
-    <Show when={editing() || activeWord()?.link}>
+    <Show when={displayLink()}>
       <Show when={editing()} fallback={
         <button
           class="link-indicator"

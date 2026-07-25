@@ -154,8 +154,7 @@ export function EffectsCatalog(props: Props) {
         id,
         type: 'custom-size',
         label: name,
-        profile: pendingProfile()!,
-        rawProfile: true,  // les deux sources produisent des offsets normalises
+        profile: pendingProfile()!,  // forme [0,1] — l'amplitude est appliquee au rendu
         mathExpr: pendingMathExpr(),
         mathParams: pendingMathParams(),
       })
@@ -181,7 +180,11 @@ export function EffectsCatalog(props: Props) {
     setNaming(false)
     setPendingProfile(null)
     setPendingColors(null)
-    setPendingComposed(null)
+    // setPendingComposed n'existe plus (type d'effet « composé » retiré) :
+    // l'appel levait une ReferenceError à chaque annulation, laissant la
+    // modale ouverte. On remet à zéro les mêmes champs que confirmName.
+    setPendingMathExpr(undefined)
+    setPendingMathParams(undefined)
   }
 
   return (
@@ -271,7 +274,6 @@ export function EffectsCatalog(props: Props) {
                                 <EffectPreview
                                   text={word}
                                   customProfile={effect.profile}
-                                  rawProfile={effect.rawProfile}
                                   customColors={effect.customColors}
                                   options={{ baseSize: baseSize(), amplitude: sizeAmplitude() }}
                                 />
