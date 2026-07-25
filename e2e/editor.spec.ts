@@ -91,9 +91,9 @@ test('insérer un emoji depuis le sélecteur', async ({ page }) => {
   await typeInEditor(page, 'Bonjour')
   const before = await charCount(page)
 
-  await page.locator('.toolbar-panel button', { hasText: 'Emoji' }).click()
+  await page.locator('.emoji-picker-trigger').click()
   await page.waitForTimeout(200)
-  const firstEmoji = page.locator('.emoji-grid button, .emoji-picker button').first()
+  const firstEmoji = page.locator('.emoji-picker-btn').first()
   await firstEmoji.click()
   await page.waitForTimeout(150)
 
@@ -110,9 +110,9 @@ test('un emoji dans un mot à effet ne casse ni le marqueur ni le profil', async
 
   await selectChars(page, 3, 4)
   await page.keyboard.press('ArrowRight')
-  await page.locator('.toolbar-panel button', { hasText: 'Emoji' }).click()
+  await page.locator('.emoji-picker-trigger').click()
   await page.waitForTimeout(200)
-  await page.locator('.emoji-grid button, .emoji-picker button').first().click()
+  await page.locator('.emoji-picker-btn').first().click()
   await page.waitForTimeout(150)
 
   expect(await page.locator(`${EDITOR} [data-size-effect]`).count()).toBe(1)
