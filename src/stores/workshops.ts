@@ -14,9 +14,8 @@ export interface WorkshopEffect {
   label: string
   source: WorkshopSource
   colors?: string[]
+  /** Forme normalisée [0,1] — JAMAIS des pixels. Voir normalizeProfile(). */
   profile?: number[]
-  /** true = profil contient des offsets bruts en px (MathFunction). false/absent = profil [0,1] (ShapeCanvas) */
-  rawProfile?: boolean
   mathExpr?: string
   mathParams?: { a: number; b: number; c: number }
   /** Pour custom-color : palette definie par l'utilisateur */
@@ -77,8 +76,45 @@ function migrateOldFavorites() {
   } catch { /* ignore */ }
 }
 
-// Run migration
+/**
+ * Migration des profils "offsets px" vers la forme [0,1].
+ *
+ * Avant, normalizeProfile(values, amplitude) cuisait l'amplitude du slider
+ * dans le tableau au moment de la création : un effet dessiné avec le slider
+ * à 18 stockait 0..18, le même dessiné à 40 stockait 0..40. Deux effets
+ * différents pour un même dessin, et une double multiplication par
+ * l'amplitude selon le chemin de rendu.
+ *
+ * Ces profils avaient toujours min=0 et max=amplitude : diviser par le max
+ * restitue exactement la forme d'origine.
+ */
+function migrateProfilesToShape() {
+  const keys = [PERSO_KEY, HISTORY_KEY]
+  for (const key of keys) {
+    const list = load<Array<WorkshopEffect & { rawProfile?: boolean }>>(key, [])
+    if (list.length === 0) continue
+    let changed = false
+    const migrated = list.map(e => {
+      if (!e.profile || e.profile.length === 0) return e
+      const max = Math.max(...e.profile)
+      const min = Math.min(...e.profile)
+      // Déjà une forme [0,1] et pas de drapeau legacy → rien à faire
+      if (!e.rawProfile && max <= 1.0001 && min >= -0.0001) return e
+      changed = true
+      const range = max - min
+      const { rawProfile: _drop, ...rest } = e
+      return {
+        ...rest,
+        profile: range < 1e-10 ? e.profile.map(() => 0) : e.profile.map(v => (v - min) / range),
+      }
+    })
+    if (changed) localStorage.setItem(key, JSON.stringify(migrated))
+  }
+}
+
+// Run migrations
 migrateOldFavorites()
+migrateProfilesToShape()
 
 // ── Signaux ──
 

@@ -1,6 +1,6 @@
 import { createSignal, onMount } from 'solid-js'
 import { baseSize, sizeAmplitude } from '../stores/editor'
-import { normalizeProfile } from '../engine/effects'
+import { normalizeProfile, sizeFromProfile, charT } from '../engine/effects'
 import { PREVIEW_SHORT } from '../data/preview'
 
 interface Props {
@@ -170,28 +170,22 @@ export function ShapeCanvas(props: Props) {
     drawCanvas()
   }
 
-  /** Preview normalisée : la plus grande lettre = baseSize + amplitude */
+  /** Preview : la plus grande lettre = baseSize + amplitude */
   const previewHtml = (): string => {
-    const prof = profile()
+    const shape = normalizeProfile(profile())
     const chars = [...PREVIEW_TEXT].filter(ch => ch !== ' ')
     const n = chars.length
-    const offsets = normalizeProfile(prof, sizeAmplitude())
+    const base = baseSize()
+    const amp = sizeAmplitude()
 
     return chars.map((ch, i) => {
-      const t = n === 1 ? 0 : i / (n - 1)
-      const pIdx = t * (offsets.length - 1)
-      const lo = Math.floor(pIdx)
-      const hi = Math.min(lo + 1, offsets.length - 1)
-      const frac = pIdx - lo
-      const offset = offsets[lo] * (1 - frac) + offsets[hi] * frac
-
-      const size = Math.max(8, Math.round(baseSize() + offset))
+      const size = sizeFromProfile(shape, charT(i, n), base, amp)
       return `<span style="font-size:${size}px">${ch}</span>`
     }).join('')
   }
 
   const handleApply = () => {
-    props.onApply(normalizeProfile([...profile()], sizeAmplitude()))
+    props.onApply(normalizeProfile([...profile()]))
   }
 
   return (
