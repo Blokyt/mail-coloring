@@ -223,7 +223,13 @@ export function applySizeEffectToSelection(effectId: string, effectLabel?: strin
  * résultat rigoureusement identique à celui de commitBaseSize().
  */
 export function previewBaseSize(newSize: number) {
-  applyBase(newSize, null)
+  if (!editorEl) return
+  const sel = activeSel()
+  if (sel) savedSel = sel
+  // Aperçu EN PLACE : ne reconstruit pas le DOM, donc ne détruit pas la
+  // sélection et n'a rien à restaurer. Restaurer volait le focus au slider
+  // et interrompait le glissement dès qu'un texte était sélectionné.
+  ops.previewBaseSize(editorEl, newSize, resolveSizeProfile, sel ?? undefined)
 }
 
 /** Fin de geste : même effet, mais annulable en une fois. */

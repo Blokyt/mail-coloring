@@ -25,7 +25,10 @@ import {
   graphemes,
   readAtoms,
   writeAtoms,
+  atomNodes,
   applySizeEffects,
+  readCharStyle,
+  writeCharStyle,
 } from './editor-dom'
 
 /* ══════════════════════════════════════════
@@ -51,22 +54,50 @@ export function transformAtoms(
   applySizeEffects(root, ctx)
 }
 
+/**
+ * Que faire des espaces ?
+ *
+ *  - 'skip'    : inchangées. Correct pour la couleur du TEXTE : une espace
+ *                n'a pas de glyphe, la colorer ne se voit pas.
+ *  - 'apply'   : même transformation que les lettres. Correct pour un FOND
+ *                uniforme : sans ça le surlignage est troué à chaque espace.
+ *  - 'inherit' : reprennent le fond de la lettre précédente. Correct pour un
+ *                cycle de couleurs de fond : le ruban reste continu sans
+ *                introduire une couleur qui n'est pas dans le cycle.
+ *
+ * Dans tous les cas les espaces ne consomment JAMAIS d'index de cycle :
+ * les couleurs restent alignées sur les lettres quel que soit l'espacement.
+ */
+type SpacePolicy = 'skip' | 'apply' | 'inherit'
+
 /** Applique `fn` au style de chaque atome caractère de l'intervalle */
 function mapStyle(
   atoms: Atom[],
   r: AtomRange,
   fn: (style: CharStyle, inkIdx: number, inkTotal: number, atom: Atom) => CharStyle,
+  spaces: SpacePolicy = 'skip',
 ): Atom[] {
   const slice = atoms.slice(r.start, r.end)
   const inkTotal = slice.filter(a => a.kind === 'char' && !isSpace(a.text)).length
   let inkIdx = 0
+  let lastInked: CharStyle | null = null
 
   return atoms.map((atom, i) => {
     if (i < r.start || i >= r.end || atom.kind !== 'char') return atom
-    if (isSpace(atom.text)) return atom
-    const out = { ...atom, style: fn({ ...atom.style }, inkIdx, inkTotal, atom) }
+
+    if (isSpace(atom.text)) {
+      if (spaces === 'skip') return atom
+      if (spaces === 'inherit') {
+        if (!lastInked) return atom
+        return { ...atom, style: { ...atom.style, backgroundColor: lastInked.backgroundColor } }
+      }
+      return { ...atom, style: fn({ ...atom.style }, inkIdx, inkTotal, atom) }
+    }
+
+    const style = fn({ ...atom.style }, inkIdx, inkTotal, atom)
+    lastInked = style
     inkIdx++
-    return out
+    return { ...atom, style }
   })
 }
 
@@ -93,9 +124,10 @@ export function setColor(root: HTMLElement, ctx: SizeContext, r: AtomRange, colo
   transformAtoms(root, ctx, as => mapStyle(as, r, s => ({ ...s, color })))
 }
 
-/** Couleur de fond uniforme ('' pour retirer) */
+/** Couleur de fond uniforme ('' pour retirer).
+ *  Les espaces sont incluses, sinon le surlignage est troué entre les mots. */
 export function setBackground(root: HTMLElement, ctx: SizeContext, r: AtomRange, color: string) {
-  transformAtoms(root, ctx, as => mapStyle(as, r, s => ({ ...s, backgroundColor: color })))
+  transformAtoms(root, ctx, as => mapStyle(as, r, s => ({ ...s, backgroundColor: color }), 'apply'))
 }
 
 /** Police uniforme */
@@ -154,7 +186,7 @@ export function applyColorCycle(
     mapStyle(as, r, (s, i) => {
       const c = colors[i % colors.length]
       return mode === 'bg' ? { ...s, backgroundColor: c } : { ...s, color: c }
-    }),
+    }, mode === 'bg' ? 'inherit' : 'skip'),
   )
 }
 
@@ -281,4 +313,45 @@ export function setBaseSize(root: HTMLElement, baseSize: number, resolveProfile:
       return { ...a, style: { ...a.style, fontSize: `${baseSize}px` } }
     }),
   )
+}
+
+/**
+ * Aperçu de la taille de base PENDANT le glissement du slider.
+ *
+ * Fait le même calcul que setBaseSize() mais modifie les tailles EN PLACE,
+ * sans passer par writeAtoms(). C'est indispensable, pas une optimisation :
+ * writeAtoms() remplace tous les nœuds de l'éditeur, ce qui détruit la
+ * sélection du document. Il fallait donc la réappliquer à chaque événement
+ * `input`, or poser une sélection dans un contenteditable y déplace le
+ * focus — le slider était donc défocalisé en plein glissement et le drag
+ * s'interrompait. D'où le symptôme : avec du texte sélectionné il fallait
+ * cliquer point par point, alors que sans sélection (aucune restauration à
+ * faire) le glissement fonctionnait.
+ *
+ * En ne restructurant rien, les nœuds survivent, la sélection reste valide,
+ * le focus ne bouge pas, et le glissement est continu.
+ *
+ * Le résultat est identique à celui de setBaseSize() : mêmes tailles
+ * écrites, même re-dérivation des effets. Vérifié par test.
+ */
+export function previewBaseSize(root: HTMLElement, baseSize: number, resolveProfile: SizeContext['resolveProfile'], r?: AtomRange) {
+  const nodes = atomNodes(root)
+  const from = r ? Math.max(0, r.start) : 0
+  const to = r ? Math.min(r.end, nodes.length) : nodes.length
+
+  for (let i = from; i < to; i++) {
+    const el = nodes[i].first as HTMLElement
+    if (el?.tagName !== 'SPAN' || el.classList.contains('line-break')) continue
+    // Les caractères pilotés par un effet sont re-dérivés juste après
+    if (el.closest('[data-size-effect]')) continue
+    // Passer par writeCharStyle et non par el.style.fontSize : le CSSOM
+    // resérialise l'attribut avec des espaces, ce qui rendrait l'aperçu
+    // textuellement différent de la validation alors que le rendu est le
+    // même — et ferait diverger les instantanés d'undo.
+    const style = readCharStyle(el)
+    style.fontSize = `${baseSize}px`
+    writeCharStyle(el, style)
+  }
+
+  applySizeEffects(root, { baseSize, resolveProfile })
 }

@@ -249,7 +249,11 @@ input[type="range"]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;b
 .page-nav-btn:active{transform:translate(0,0);box-shadow:none}
 .editor:focus,.editor:focus-visible{outline:none}
 .editor:empty::before{content:'Ecrivez ici...';color:var(--muted);pointer-events:none;font-style:italic}
-.editor span[style*="background"]{display:inline-block;vertical-align:text-bottom;line-height:1.15}
+/* Fonds : rester en `inline`. Chaque caractere est un span distinct ; en
+   `inline-block` chaque boite a une largeur fractionnaire arrondie au pixel,
+   ce qui laissait un filet blanc entre chaque lettre et rendait le
+   surlignage strie. Les boites inline sont contigues, le fond est continu. */
+.editor span[style*="background"]{line-height:1.15}
 
 /* ── Layout switcher ── */
 .layout-switcher{position:absolute;top:6px;right:10px;display:flex;gap:3px;z-index:6;user-select:none}

@@ -330,3 +330,100 @@ describe('export Outlook', () => {
     expect(html).toContain('&lt;')
   })
 })
+
+/* ══════════════════════════════════════════
+   Coloriage et espaces (retour utilisateur : surlignage troué)
+   ══════════════════════════════════════════ */
+
+describe('coloriage des espaces', () => {
+  const bgOf = (root: HTMLElement) =>
+    [...root.querySelectorAll<HTMLElement>('span')].map(s => s.style.backgroundColor)
+
+  it('un fond uniforme couvre AUSSI les espaces entre les mots', () => {
+    const root = makeEditor('ab cd ef')
+    ops.setBackground(root, ctxAt(18), all(root), '#1a8a5c')
+    const bgs = bgOf(root)
+    expect(bgs).toHaveLength(8)
+    expect(bgs.every(b => b !== ''), `fonds obtenus : ${JSON.stringify(bgs)}`).toBe(true)
+  })
+
+  it('un cycle de fond garde un ruban continu, les espaces reprenant la couleur precedente', () => {
+    const root = makeEditor('ab cd')
+    ops.applyColorCycle(root, ctxAt(18), all(root), ['#111111', '#222222'], 'bg')
+    const bgs = bgOf(root).map(c => c.replace(/\s/g, ''))
+    // a=1, b=2, espace=2 (reprend b), c=1, d=2 : le cycle reste aligne sur
+    // les lettres et aucun trou n'apparait.
+    expect(bgs).toEqual(['#111111', '#222222', '#222222', '#111111', '#222222'])
+  })
+
+  it('la couleur de TEXTE laisse les espaces tranquilles', () => {
+    const root = makeEditor('ab cd')
+    ops.applyColorCycle(root, ctxAt(18), all(root), ['#111111', '#222222'], 'text')
+    const spans = [...root.querySelectorAll<HTMLElement>('span')]
+    expect(spans[2].style.color).toBe('')
+    expect(spans.filter(s => !isSpace(s.textContent || '')).map(s => s.style.color.replace(/\s/g, '')))
+      .toEqual(['#111111', '#222222', '#111111', '#222222'])
+  })
+
+  it('retirer le fond le retire aussi des espaces', () => {
+    const root = makeEditor('ab cd')
+    ops.setBackground(root, ctxAt(18), all(root), '#1a8a5c')
+    ops.setBackground(root, ctxAt(18), all(root), '')
+    expect(bgOf(root).every(b => b === '')).toBe(true)
+  })
+
+  it('le fond des espaces ressort bien dans l\'export Outlook', () => {
+    const root = makeEditor('ab cd')
+    ops.setBackground(root, ctxAt(18), all(root), '#1a8a5c')
+    const html = cleanForOutlook(root.innerHTML)
+    // L'espace exportee en &nbsp; doit porter le fond, sinon le surlignage
+    // est troue une fois colle dans Outlook.
+    expect(html).toMatch(/background-color:#1a8a5c[^<]*">&nbsp;/i)
+  })
+})
+
+/* ══════════════════════════════════════════
+   Apercu du slider == validation
+   ══════════════════════════════════════════ */
+
+describe('apercu de taille pendant le glissement', () => {
+  it('l\'apercu en place donne exactement le meme document que la validation', () => {
+    for (const size of [8, 24, 40, 120]) {
+      const a = makeEditor('Bonjour le monde')
+      ops.applySizeEffect(a, ctxAt(18), { start: 0, end: 7 }, 'arche')
+      ops.previewBaseSize(a, size, resolve)
+
+      const b = makeEditor('Bonjour le monde')
+      ops.applySizeEffect(b, ctxAt(18), { start: 0, end: 7 }, 'arche')
+      ops.setBaseSize(b, size, resolve)
+
+      expect(a.innerHTML, `taille ${size}`).toBe(b.innerHTML)
+    }
+  })
+
+  it('l\'apercu restreint a une selection se comporte comme la validation', () => {
+    const a = makeEditor('Bonjour le monde')
+    ops.previewBaseSize(a, 44, resolve, { start: 0, end: 7 })
+    const b = makeEditor('Bonjour le monde')
+    ops.setBaseSize(b, 44, resolve, { start: 0, end: 7 })
+    expect(a.innerHTML).toBe(b.innerHTML)
+  })
+
+  it('l\'apercu ne remplace aucun noeud : la selection reste valide', () => {
+    const root = document.body.appendChild(document.createElement('div'))
+    root.textContent = 'Bonjour le monde'
+    normalizeEditor(root, ctxAt(18))
+    ops.setBaseSize(root, 18, resolve)
+
+    const before = [...root.querySelectorAll('span')]
+    applyAtomRange(root, { start: 0, end: 7 })
+
+    ops.previewBaseSize(root, 40, resolve, { start: 0, end: 7 })
+
+    // Memes objets DOM qu'avant : c'est ce qui evite de devoir reappliquer
+    // la selection, donc de voler le focus au slider en plein glissement.
+    expect([...root.querySelectorAll('span')]).toEqual(before)
+    expect(getAtomRange(root)).toEqual({ start: 0, end: 7 })
+    root.remove()
+  })
+})

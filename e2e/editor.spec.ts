@@ -347,3 +347,105 @@ test('créer un effet au tracé libre puis l\'appliquer', async ({ page }) => {
   expect(await checkInvariant(page)).toEqual([])
   expect(errors).toEqual([])
 })
+
+/* ══════════════════════════════════════════
+   Glissement du slider de taille
+   ══════════════════════════════════════════ */
+
+/** Effectue un vrai glissement continu sur le slider et retourne les
+ *  tailles affichees a chaque etape. */
+async function dragSlider(page: Page, steps = 6) {
+  const slider = page.locator('.slider-group input[type=range]')
+  const box = (await slider.boundingBox())!
+  const y = box.y + box.height / 2
+  await page.mouse.move(box.x + box.width * 0.3, y)
+  await page.mouse.down()
+
+  const seen: number[] = []
+  for (let i = 1; i <= steps; i++) {
+    await page.mouse.move(box.x + box.width * (0.3 + (0.5 * i) / steps), y)
+    await page.waitForTimeout(30)
+    seen.push(parseInt(await page.locator('.slider-value').innerText()))
+  }
+  const focused = await page.evaluate(() => document.activeElement?.getAttribute('type'))
+  await page.mouse.up()
+  await page.waitForTimeout(80)
+  return { seen, focused }
+}
+
+test('le slider glisse en continu quand du texte est selectionne', async ({ page }) => {
+  const errors = watchErrors(page)
+  await typeInEditor(page, 'Bonjour le monde')
+  await selectChars(page, 0, 7)
+
+  const { seen, focused } = await dragSlider(page)
+
+  // Regression : l'apercu reconstruisait le DOM puis reappliquait la
+  // selection, ce qui deplacait le focus vers l'editeur et interrompait le
+  // glissement. Il fallait alors cliquer point par point.
+  expect(focused, 'le slider a perdu le focus pendant le glissement').toBe('range')
+  expect(new Set(seen).size, `le glissement doit suivre la souris, vu : ${seen}`).toBeGreaterThan(2)
+  expect(seen).toEqual([...seen].sort((a, b) => a - b))
+  expect(await checkInvariant(page)).toEqual([])
+  expect(errors).toEqual([])
+})
+
+test('le glissement se comporte pareil avec et sans selection', async ({ page }) => {
+  await typeInEditor(page, 'Bonjour le monde')
+  const sansSelection = await dragSlider(page)
+
+  await page.reload()
+  await page.waitForSelector(EDITOR)
+  await typeInEditor(page, 'Bonjour le monde')
+  await selectChars(page, 0, 16)
+  const avecSelection = await dragSlider(page)
+
+  expect(avecSelection.seen).toEqual(sansSelection.seen)
+  expect(avecSelection.focused).toBe(sansSelection.focused)
+})
+
+test('glisser sur un mot a effet le rescale sans casser le marqueur', async ({ page }) => {
+  await typeInEditor(page, 'Bonjour le monde')
+  await selectChars(page, 0, 7)
+  await applyFirstSizeEffect(page)
+  await selectChars(page, 0, 7)
+
+  const { seen, focused } = await dragSlider(page)
+  expect(focused).toBe('range')
+  expect(new Set(seen).size).toBeGreaterThan(2)
+  expect(await page.locator(`${EDITOR} [data-size-effect]`).count()).toBe(1)
+  expect(await checkInvariant(page)).toEqual([])
+})
+
+/* ══════════════════════════════════════════
+   Fond continu (retour utilisateur)
+   ══════════════════════════════════════════ */
+
+test('le surlignage est continu, sans trou aux espaces', async ({ page }) => {
+  await typeInEditor(page, 'Bonjour le monde')
+  await selectChars(page, 0, 16)
+  await page.locator('.toggle-btn', { hasText: 'Fond' }).click()
+  await page.locator('.swatch').nth(4).click()
+  await page.waitForTimeout(150)
+
+  const gaps = await page.evaluate((sel) => {
+    const root = document.querySelector(sel) as HTMLElement
+    const spans = [...root.querySelectorAll('span')]
+    const holes = spans.filter(s => {
+      const bg = getComputedStyle(s).backgroundColor
+      return bg === 'rgba(0, 0, 0, 0)' || bg === 'transparent'
+    }).map(s => JSON.stringify(s.textContent))
+    // Ecart horizontal entre deux caracteres consecutifs
+    let maxGap = 0
+    for (let i = 1; i < spans.length; i++) {
+      const a = spans[i - 1].getBoundingClientRect()
+      const b = spans[i].getBoundingClientRect()
+      if (Math.abs(a.top - b.top) > 1) continue
+      maxGap = Math.max(maxGap, b.left - a.right)
+    }
+    return { holes, maxGap }
+  }, EDITOR)
+
+  expect(gaps.holes, 'caracteres sans fond (trous dans le surlignage)').toEqual([])
+  expect(gaps.maxGap, 'filet blanc entre deux lettres').toBeLessThan(0.5)
+})
