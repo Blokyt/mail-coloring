@@ -421,14 +421,44 @@ export function atomNodes(root: HTMLElement): AtomNodes[] {
   return out
 }
 
-/** Position d'un nœud du DOM dans la liste des atomes */
-function atomIndexOf(nodes: AtomNodes[], target: Node): number {
-  for (let i = 0; i < nodes.length; i++) {
-    const a = nodes[i]
-    if (a.first === target || a.last === target) return i
-    if (a.first.contains?.(target) || (a.first as Element).contains?.(target as Node)) return i
+/** Compte les atomes contenus dans un fragment (les spans vides d'une coupe
+ *  au milieu d'un caractère ne comptent pas) */
+function countAtoms(frag: DocumentFragment): number {
+  let n = 0
+  for (const el of frag.querySelectorAll('span, br')) {
+    if (el.tagName === 'BR') {
+      const prev = el.previousSibling
+      if (prev && (prev as HTMLElement).classList?.contains('line-break')) continue
+      n++
+      continue
+    }
+    const span = el as HTMLElement
+    if (span.dataset.sizeEffect) continue        // conteneur, pas un atome
+    if (span.classList.contains('line-break')) { n++; continue }
+    if (span.querySelector('span')) continue     // pas une feuille
+    if (!span.textContent) continue              // coupe au milieu d'un caractère
+    n++
   }
-  return -1
+  return n
+}
+
+/**
+ * Nombre d'atomes situés strictement avant le point (container, offset).
+ *
+ * Passe par un clone du préfixe plutôt que par un parcours manuel : c'est le
+ * seul moyen simple de traiter correctement tous les cas de bord du curseur
+ * (dans un text node, entre deux éléments, au milieu du groupe ↵ + br + zws).
+ */
+function atomsBefore(root: HTMLElement, container: Node, offset: number): number {
+  const probe = document.createRange()
+  probe.setStart(root, 0)
+  try {
+    probe.setEnd(container, offset)
+  } catch {
+    return 0
+  }
+  if (probe.collapsed) return 0
+  return countAtoms(probe.cloneContents())
 }
 
 /** Lit la sélection courante en offsets d'atomes. null si hors éditeur. */
@@ -438,44 +468,11 @@ export function getAtomRange(root: HTMLElement): AtomRange | null {
   const range = sel.getRangeAt(0)
   if (!root.contains(range.commonAncestorContainer)) return null
 
-  const nodes = atomNodes(root)
-  if (nodes.length === 0) return { start: 0, end: 0 }
-
-  let start = -1
-  let end = -1
-  for (let i = 0; i < nodes.length; i++) {
-    const probe = document.createRange()
-    probe.selectNode(nodes[i].first)
-    // L'atome i est-il dans la sélection ?
-    if (range.intersectsNode(nodes[i].first)) {
-      // intersectsNode est vrai pour un range collapsé posé au bord :
-      // on exige un recouvrement strict
-      const startsBefore = range.compareBoundaryPoints(Range.END_TO_START, probe) < 0
-      const endsAfter = range.compareBoundaryPoints(Range.START_TO_END, probe) > 0
-      if (startsBefore && endsAfter) {
-        if (start === -1) start = i
-        end = i + 1
-      }
-    }
-  }
-
-  if (start === -1) {
-    // Sélection vide : position du curseur entre deux atomes
-    const caret = caretAtomIndex(root, nodes, range)
-    return { start: caret, end: caret }
-  }
+  const start = atomsBefore(root, range.startContainer, range.startOffset)
+  const end = range.collapsed
+    ? start
+    : Math.max(start, atomsBefore(root, range.endContainer, range.endOffset))
   return { start, end }
-}
-
-/** Index d'insertion du curseur (0 = avant le premier atome) */
-function caretAtomIndex(root: HTMLElement, nodes: AtomNodes[], range: Range): number {
-  for (let i = 0; i < nodes.length; i++) {
-    const probe = document.createRange()
-    probe.setStartBefore(nodes[i].first)
-    probe.collapse(true)
-    if (range.compareBoundaryPoints(Range.START_TO_START, probe) <= 0) return i
-  }
-  return nodes.length
 }
 
 /** Construit un Range DOM depuis des offsets d'atomes */

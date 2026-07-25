@@ -12,7 +12,12 @@ export interface WordInspect {
   strike: boolean
   link: string | null
   linkEl: HTMLAnchorElement | null
+  /** Spans du mot — valides seulement jusqu'à la prochaine mutation.
+   *  Ne JAMAIS s'en servir pour muter : utiliser `range`. */
   spans: HTMLElement[]
+  /** Position du mot en offsets d'atomes — survit aux reconstructions du DOM
+   *  (opérations, undo), contrairement aux références de nœuds. */
+  range: { start: number; end: number }
 }
 
 // Signal partagé entre Editor et Header — dans un fichier séparé

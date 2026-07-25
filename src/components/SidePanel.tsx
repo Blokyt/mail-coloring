@@ -1,10 +1,10 @@
 import { For, Show, createSignal, createEffect, on } from 'solid-js'
-import { sampleProfile } from '../engine/effects'
 import { adminData } from '../stores/admin-data'
 import { sparklineFromEffect } from '../engine/sparkline'
 import { baseSize, sizeAmplitude, setCustomSizeProfile } from '../stores/editor'
+import { resolveSizeProfile } from '../stores/size-profiles'
 import { getFavorites, getBaseEffects, getPersoEffects, history, pushHistory, toggleFavorite, type WorkshopEffect } from '../stores/workshops'
-import { getSelectedText, applyColorToSelection, applySizeToSelection } from './Editor'
+import { getSelectedText, applyColorToSelection, applySizeEffectToSelection } from './Editor'
 import { showToast } from './Toast'
 import { COLOR_ACCENTS, SIZE_ACCENTS } from '../data/accents'
 
@@ -102,39 +102,16 @@ export function SidePanel(props: { side: 'left' | 'right' }) {
         pushHistory(effect)
         const modeLabel2 = (effect.colorMode ?? 'text') === 'bg' ? 'Fond' : 'Couleur'
         applyColorToSelection(effect.customColors, effect.colorMode ?? 'text', `${modeLabel2} : ${effect.label}`)
-      } else if (effect.type === 'size') {
-        const profile = effect.profile
-        if (!profile) return
+      } else if (isSizeType(effect)) {
+        // Chemin UNIQUE pour les effets de base et les effets perso.
+        // Avant, les effets perso étaient appliqués sans marqueur : ils ne
+        // survivaient pas au slider de taille, qui les aplatissait, alors que
+        // les effets de base y résistaient. Deux comportements opposés pour
+        // le même geste.
+        if (!resolveSizeProfile(effect.id)) return
         setCustomSizeProfile(null)
         pushHistory(effect)
-        applySizeToSelection(
-          (charIdx, total) => {
-            const t = total <= 1 ? 0 : charIdx / (total - 1)
-            return opts().amplitude * sampleProfile(profile, t)
-          },
-          opts().baseSize,
-          `Taille : ${effect.label}`,
-          effect.id,
-          opts().amplitude
-        )
-      } else if (effect.type === 'custom-size' && effect.profile) {
-        pushHistory(effect)
-        const profile = effect.profile
-        const isRaw = !!effect.rawProfile
-        const amp = opts().amplitude
-        applySizeToSelection(
-          (charIdx, total) => {
-            const t = total <= 1 ? 0 : charIdx / (total - 1)
-            const pIdx = t * (profile.length - 1)
-            const lo = Math.floor(pIdx)
-            const hi = Math.min(lo + 1, profile.length - 1)
-            const frac = pIdx - lo
-            const v = profile[lo] * (1 - frac) + profile[hi] * frac
-            return isRaw ? v : v * amp
-          },
-          opts().baseSize,
-          `Taille : ${effect.label}`
-        )
+        applySizeEffectToSelection(effect.id, `Taille : ${effect.label}`)
       }
       showToast('Effet applique !')
     } else {

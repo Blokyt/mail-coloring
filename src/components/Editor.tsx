@@ -1,621 +1,383 @@
 import { onMount, onCleanup, createSignal, createEffect } from 'solid-js'
-import { activeColorEffect, activeSizeEffect, baseSize, pagesPerView, setPagesPerView } from '../stores/editor'
+import { baseSize, pagesPerView, setPagesPerView } from '../stores/editor'
 import { initUndoSystem, recordOperation, recordTypingChar, flushTyping, performUndo, performRedo } from '../stores/undo-redo'
-import { activeWord, setActiveWord } from '../stores/word-inspect'
-import { sampleProfile, cleanForOutlook } from '../engine/effects'
-import { adminData } from '../stores/admin-data'
+import { setActiveWord } from '../stores/word-inspect'
+import { cleanForOutlook } from '../engine/effects'
+import { resolveSizeProfile } from '../stores/size-profiles'
+import {
+  type AtomRange,
+  type CharStyle,
+  type SizeContext,
+  normalizeEditor,
+  readAtoms,
+  atomNodes,
+  getAtomRange,
+  applyAtomRange,
+  isSpace,
+  NBSP,
+} from '../engine/editor-dom'
+import * as ops from '../engine/editor-ops'
 import { getBuffer } from './Header'
 
 let editorEl: HTMLDivElement | undefined
 let viewportEl: HTMLDivElement | undefined
-let savedRange: Range | null = null
+
+/**
+ * Sélection mémorisée, en OFFSETS D'ATOMES et non en Range DOM.
+ *
+ * L'ancien `savedRange` gardait des références de nœuds. Or chaque opération
+ * remplaçait ces nœuds (extractContents/insertNode), et un undo recréait tout
+ * le DOM via innerHTML : la sélection sauvée pointait alors dans le vide sans
+ * que rien ne l'invalide. C'est ce qui produisait le « selon l'ordre
+ * d'exécution ça casse ». Un couple d'entiers survit à toutes ces
+ * reconstructions.
+ */
+let savedSel: AtomRange | null = null
 
 export function getEditorEl(): HTMLDivElement | undefined { return editorEl }
+
+/** Contexte de rendu des effets — toujours lu à l'instant T, jamais figé */
+function ctx(): SizeContext {
+  return { baseSize: baseSize(), resolveProfile: resolveSizeProfile }
+}
 
 export function getAllEditorHtml(): string {
   return editorEl?.innerHTML?.trim() || ''
 }
 
 export function getAllEditorText(): string {
-  return (editorEl?.textContent?.trim() || '').replace(/\u00A0/g, ' ')
+  return (editorEl?.textContent?.trim() || '').replace(/ /g, ' ')
 }
 
+/* ══════════════════════════════════════════
+   Sélection
+   ══════════════════════════════════════════ */
+
 export function saveSelection() {
-  const sel = window.getSelection()
-  if (!sel || sel.rangeCount === 0) return
-  const range = sel.getRangeAt(0)
-  if (editorEl && editorEl.contains(range.commonAncestorContainer)) {
-    savedRange = range.cloneRange()
-  }
+  if (!editorEl) return
+  const r = getAtomRange(editorEl)
+  if (r) savedSel = r
+}
+
+/** Sélection à utiliser pour une opération : la vivante si elle est dans
+ *  l'éditeur, sinon la dernière mémorisée. */
+function currentSel(): AtomRange | null {
+  if (!editorEl) return null
+  return getAtomRange(editorEl) ?? savedSel
+}
+
+/**
+ * Sélection non vide requise par les opérations de style.
+ *
+ * Le repli sur `savedSel` doit se déclencher aussi quand la sélection vivante
+ * existe mais est VIDE, pas seulement quand elle est absente : cliquer un
+ * contrôle de la toolbar peut collapser la sélection du document sans la
+ * faire sortir de l'éditeur. Avec un simple `?? savedSel`, l'opération
+ * recevait alors « rien de sélectionné » et retombait sur « tout le
+ * document » — ce qui faisait diverger le résultat selon l'action précédente.
+ */
+function activeSel(): AtomRange | null {
+  const live = editorEl ? getAtomRange(editorEl) : null
+  if (live && live.end > live.start) return live
+  if (savedSel && savedSel.end > savedSel.start) return savedSel
+  return null
 }
 
 export function restoreSelection(): boolean {
-  if (savedRange) {
-    const sel = window.getSelection()
-    if (!sel) return false
-    sel.removeAllRanges()
-    sel.addRange(savedRange)
-    return true
-  }
-  // Pas de sélection sauvée → placer le curseur à la fin de l'éditeur
-  if (editorEl) {
-    editorEl.focus()
-    const sel = window.getSelection()
-    if (sel) {
-      const range = document.createRange()
-      range.selectNodeContents(editorEl)
-      range.collapse(false)
-      sel.removeAllRanges()
-      sel.addRange(range)
-      return true
-    }
-  }
-  return false
+  if (!editorEl) return false
+  editorEl.focus()
+  if (savedSel) return applyAtomRange(editorEl, savedSel)
+  const n = atomNodes(editorEl).length
+  return applyAtomRange(editorEl, { start: n, end: n })
 }
 
 export function getSelectedText(): string {
-  const sel = window.getSelection()
-  if (sel && sel.rangeCount > 0 && editorEl) {
-    const range = sel.getRangeAt(0)
-    if (editorEl.contains(range.commonAncestorContainer) && !range.collapsed) return range.toString()
-  }
-  if (savedRange && !savedRange.collapsed) return savedRange.toString()
-  return ''
+  if (!editorEl) return ''
+  const r = activeSel()
+  if (!r) return ''
+  return readAtoms(editorEl).slice(r.start, r.end).map(a => a.text).join('').replace(/ /g, ' ')
 }
 
-/** Version interne — pas de record undo (l'appelant s'en charge) */
-function _replaceHtml(html: string) {
-  if (!editorEl) return
-  const sel = window.getSelection()
-  if (!sel || sel.rangeCount === 0) { if (!restoreSelection()) return }
-  const currentSel = window.getSelection()
-  if (!currentSel || currentSel.rangeCount === 0) return
-  const range = currentSel.getRangeAt(0)
-  if (!editorEl.contains(range.commonAncestorContainer)) return
-  range.deleteContents()
-  const temp = document.createElement('div')
-  temp.innerHTML = html
-  const fragment = document.createDocumentFragment()
-  let lastNode: Node | null = null
-  while (temp.firstChild) { lastNode = temp.firstChild; fragment.appendChild(temp.firstChild) }
-  range.insertNode(fragment)
-  if (lastNode) {
-    const newRange = document.createRange()
-    newRange.setStartAfter(lastNode)
-    newRange.collapse(true)
-    currentSel.removeAllRanges()
-    currentSel.addRange(newRange)
-    savedRange = newRange.cloneRange()
-  }
+/**
+ * Exécute une opération : sélection → undo → mutation → restauration.
+ * Toute mutation de l'éditeur passe par ici, ce qui garantit qu'aucune ne
+ * peut échapper à l'historique ni laisser la sélection dans un état invalide.
+ */
+function runOp(label: string, category: Parameters<typeof recordOperation>[1], sel: AtomRange | null, fn: (r: AtomRange) => AtomRange | void): boolean {
+  if (!editorEl || !sel) return false
+  const op = recordOperation(label, category)
+  const next = fn(sel) ?? sel
+  savedSel = next
+  applyAtomRange(editorEl, next)
+  op.commit()
   editorEl.focus()
+  return true
+}
+
+/* ══════════════════════════════════════════
+   Style de la sélection
+   ══════════════════════════════════════════ */
+
+const STYLE_LABELS: Record<string, (v: string) => string> = {
+  color: v => `Couleur : ${v}`,
+  backgroundColor: v => `Fond : ${v}`,
+  fontSize: v => `Taille : ${v}`,
+  fontFamily: v => `Police : ${v.split(',')[0]}`,
+}
+
+export function applyInlineStyle(prop: string, value: string) {
+  const sel = activeSel()
+  const label = STYLE_LABELS[prop]?.(value) ?? `Style : ${prop}`
+  runOp(label, 'format', sel, r => {
+    switch (prop) {
+      case 'color': ops.setColor(editorEl!, ctx(), r, value); break
+      case 'backgroundColor': ops.setBackground(editorEl!, ctx(), r, value); break
+      case 'fontFamily': ops.setFontFamily(editorEl!, ctx(), r, value); break
+      case 'fontSize': ops.setFontSize(editorEl!, ctx(), r, parseInt(value)); break
+    }
+  })
+}
+
+const FORMAT_LABELS: Record<string, string> = {
+  bold: 'Gras', italic: 'Italique', underline: 'Souligné', strikeThrough: 'Barré',
+}
+
+/** Gras / italique / souligné / barré.
+ *  Remplace document.execCommand, qui produisait des <b>/<font> imbriqués
+ *  incompatibles avec l'invariant et alimentait une pile d'undo parallèle. */
+export function execFormatCommand(cmd: string) {
+  const sel = activeSel()
+  const fmt = cmd === 'strikeThrough' ? 'strike' : cmd
+  runOp(FORMAT_LABELS[cmd] || cmd, 'format', sel, r => {
+    ops.toggleFormat(editorEl!, ctx(), r, fmt as ops.ToggleFormat)
+  })
+}
+
+/** Réinitialise le style de la sélection, effet de taille compris. */
+export function clearSelectionStyle() {
+  const sel = activeSel()
+  runOp('Réinitialiser le style', 'format', sel, r => {
+    ops.clearStyle(editorEl!, ctx(), r, { fontSize: `${baseSize()}px`, fontFamily: 'Arial' })
+  })
+}
+
+/* ══════════════════════════════════════════
+   Liens
+   ══════════════════════════════════════════ */
+
+export function applyLink(url: string) {
+  if (!url) return
+  const sel = activeSel()
+  runOp(`Lien : ${url.replace(/^https?:\/\//, '').slice(0, 30)}`, 'link', sel, r => {
+    ops.setLink(editorEl!, ctx(), r, url)
+  })
+}
+
+export function removeLink() {
+  const sel = currentSel()
+  if (!editorEl || !sel) return
+  // Étendre au lien entier sous le curseur
+  const atoms = readAtoms(editorEl)
+  const probe = atoms[Math.min(sel.start, atoms.length - 1)]
+  if (!probe?.href) return
+  let start = sel.start
+  let end = Math.max(sel.end, sel.start + 1)
+  while (start > 0 && atoms[start - 1]?.href === probe.href) start--
+  while (end < atoms.length && atoms[end]?.href === probe.href) end++
+  runOp('Retirer lien', 'link', { start, end }, r => {
+    ops.removeLink(editorEl!, ctx(), r)
+  })
+}
+
+/* ══════════════════════════════════════════
+   Effets
+   ══════════════════════════════════════════ */
+
+export function applyColorToSelection(colors: string[], mode: 'text' | 'bg' = 'text', effectLabel?: string) {
+  if (colors.length === 0) return
+  const sel = activeSel()
+  runOp(effectLabel || (mode === 'bg' ? 'Fond couleur' : 'Couleur'), 'effect', sel, r => {
+    ops.applyColorCycle(editorEl!, ctx(), r, colors, mode)
+  })
+}
+
+/**
+ * Applique un effet de taille : pose le marqueur, rien d'autre.
+ * Les tailles sont dérivées de (id, taille de base, rang) et re-dérivées
+ * après chaque opération ultérieure — c'est ce qui rend le résultat unique
+ * quel que soit l'ordre des actions.
+ */
+export function applySizeEffectToSelection(effectId: string, effectLabel?: string) {
+  const sel = activeSel()
+  runOp(effectLabel || 'Taille', 'effect', sel, r => {
+    ops.applySizeEffect(editorEl!, ctx(), r, effectId)
+  })
+}
+
+/* ══════════════════════════════════════════
+   Taille de base
+   ══════════════════════════════════════════ */
+
+/**
+ * Aperçu pendant le glissement du slider : pas d'entrée d'undo, mais un
+ * résultat rigoureusement identique à celui de commitBaseSize().
+ */
+export function previewBaseSize(newSize: number) {
+  applyBase(newSize, null)
+}
+
+/** Fin de geste : même effet, mais annulable en une fois. */
+export function commitBaseSize(newSize: number) {
+  applyBase(newSize, `Taille : ${newSize}px`)
+}
+
+/**
+ * Coeur commun de l'aperçu et de la validation, pour qu'ils ne puissent pas
+ * diverger.
+ *
+ * La sélection est calculée UNE fois, utilisée, mémorisée, puis restaurée.
+ * L'aperçu restaurait auparavant `savedSel` au lieu de la sélection qu'il
+ * venait d'utiliser : le glissement collapsait donc la sélection vivante, et
+ * la validation qui suivait ne voyait plus rien à retailler et repartait sur
+ * le document entier. D'où un résultat qui dépendait de l'action précédente.
+ */
+function applyBase(newSize: number, label: string | null) {
+  if (!editorEl) return
+  const sel = activeSel()
+  const op = label ? recordOperation(label, 'format') : null
+  ops.setBaseSize(editorEl, newSize, resolveSizeProfile, sel ?? undefined)
+  if (sel) {
+    savedSel = sel
+    applyAtomRange(editorEl, sel)
+  }
+  op?.commit()
+}
+
+/* ══════════════════════════════════════════
+   Insertion
+   ══════════════════════════════════════════ */
+
+/** Style du prochain caractère, d'après la hotbar */
+function bufferStyle(): CharStyle {
+  const b = getBuffer()
+  return {
+    color: b.foreColor,
+    backgroundColor: b.hiliteColor || '',
+    fontSize: `${b.fontSize}px`,
+    fontFamily: b.fontFamily,
+    bold: b.bold,
+    italic: b.italic,
+    underline: b.underline,
+    strike: b.strikeThrough,
+  }
 }
 
 export function replaceSelectionWithHtml(html: string, label = 'Insérer') {
   if (!editorEl) return
-  const op = recordOperation(label, 'insert')
-  _replaceHtml(html)
-  op.commit()
+  const tmp = document.createElement('div')
+  tmp.innerHTML = html
+  insertPlainText(tmp.textContent || '', label)
 }
 
-export function applyInlineStyle(prop: string, value: string) {
-  if (!editorEl) return
-  restoreSelection()
-  const sel = window.getSelection()
-  if (!sel || sel.rangeCount === 0) { editorEl.focus(); return }
-  const labels: Record<string, string> = { color: `Couleur : ${value}`, backgroundColor: `Fond : ${value}`, fontSize: `Taille : ${value}`, fontFamily: `Police : ${value.split(',')[0]}` }
-  const op = recordOperation(labels[prop] || `Style : ${prop}`, 'format')
-  if (prop === 'color') document.execCommand('foreColor', false, value)
-  else if (prop === 'backgroundColor') {
-    // Manipulation DOM char-par-char au lieu de execCommand('hiliteColor')
-    // pour que le fond s'applique sur chaque span individuel et suive la taille
-    const range = sel.getRangeAt(0)
-    if (!range.collapsed && editorEl.contains(range.commonAncestorContainer)) {
-      const fragment = range.extractContents()
-      const walker = document.createTreeWalker(fragment, NodeFilter.SHOW_TEXT)
-      const textNodes: Text[] = []
-      while (walker.nextNode()) textNodes.push(walker.currentNode as Text)
-
-      for (const textNode of textNodes) {
-        const text = textNode.textContent || ''
-        const graphemes = [...text]
-        const parent = textNode.parentElement
-
-        // Span single-char existant → modifier directement
-        if (parent && parent.tagName === 'SPAN' && parent !== fragment as unknown as Element
-          && parent.childNodes.length === 1 && graphemes.length === 1
-          && graphemes[0] !== ' ' && graphemes[0] !== '\n' && graphemes[0] !== '\t') {
-          parent.style.backgroundColor = value
-          continue
-        }
-
-        // Cas général — wrapper chaque grapheme
-        const charFrag = document.createDocumentFragment()
-        for (const ch of graphemes) {
-          if (ch === ' ' || ch === '\n' || ch === '\t') {
-            charFrag.appendChild(document.createTextNode(ch))
-          } else {
-            const span = document.createElement('span')
-            span.style.backgroundColor = value
-            span.textContent = ch
-            charFrag.appendChild(span)
-          }
-        }
-        textNode.parentNode?.replaceChild(charFrag, textNode)
-      }
-      range.insertNode(fragment)
-    }
-  } else if (prop === 'fontSize') {
-    // Manipulation DOM char-par-char pour ne pas casser les marqueurs [data-size-effect]
-    const range = sel.getRangeAt(0)
-    if (!range.collapsed && editorEl.contains(range.commonAncestorContainer)) {
-      const fragment = range.extractContents()
-      const walker = document.createTreeWalker(fragment, NodeFilter.SHOW_TEXT)
-      const textNodes: Text[] = []
-      while (walker.nextNode()) textNodes.push(walker.currentNode as Text)
-
-      for (const textNode of textNodes) {
-        const text = textNode.textContent || ''
-        const graphemes = [...text]
-        const parent = textNode.parentElement
-
-        if (parent && parent.tagName === 'SPAN' && parent !== fragment as unknown as Element
-          && parent.childNodes.length === 1 && graphemes.length === 1
-          && graphemes[0] !== ' ' && graphemes[0] !== '\n' && graphemes[0] !== '\t') {
-          parent.style.fontSize = value
-          continue
-        }
-
-        const charFrag = document.createDocumentFragment()
-        for (const ch of graphemes) {
-          if (ch === ' ' || ch === '\n' || ch === '\t') {
-            charFrag.appendChild(document.createTextNode(ch))
-          } else {
-            const span = document.createElement('span')
-            span.style.fontSize = value
-            span.textContent = ch
-            charFrag.appendChild(span)
-          }
-        }
-        textNode.parentNode?.replaceChild(charFrag, textNode)
-      }
-      range.insertNode(fragment)
-    }
-  } else if (prop === 'fontFamily') document.execCommand('fontName', false, value)
-  op.commit()
-  editorEl.focus()
-  saveSelection()
+/** Insère du texte brut au style de la hotbar */
+export function insertPlainText(text: string, label = 'Insérer') {
+  if (!text || !editorEl) return
+  const sel = currentSel() ?? { start: 0, end: 0 }
+  runOp(label, 'insert', sel, r => ops.insertText(editorEl!, ctx(), r, text, bufferStyle()))
 }
+
+/* ══════════════════════════════════════════
+   Mot sous le curseur
+   ══════════════════════════════════════════ */
 
 /**
- * Wrappe la selection dans un <a href="..."> sans changer le visuel.
- * Le lien herite du style existant (color, text-decoration inherit).
+ * Le mot actif est décrit par des OFFSETS, pas par des HTMLElement.
+ * L'ancienne version stockait les nœuds dans un signal : après un undo (qui
+ * remplace innerHTML) ou après n'importe quelle opération, ces références
+ * étaient orphelines et la hotbar écrivait dans des nœuds détachés.
  */
-export function applyLink(url: string) {
-  if (!editorEl || !url) return
-  restoreSelection()
-  const sel = window.getSelection()
-  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return
-  const short = url.replace(/^https?:\/\//, '').slice(0, 30)
-  const op = recordOperation(`Lien : ${short}`, 'link')
+function computeWordAtCursor() {
+  if (!editorEl) { setActiveWord(null); return }
+  const sel = getAtomRange(editorEl)
+  if (!sel) { setActiveWord(null); return }
 
-  const range = sel.getRangeAt(0)
-  const contents = range.extractContents()
+  const atoms = readAtoms(editorEl)
+  if (atoms.length === 0) { setActiveWord(null); return }
 
-  const a = document.createElement('a')
-  a.href = url
-  a.target = '_blank'
-  a.style.color = 'inherit'
-  a.style.textDecoration = 'inherit'
-  a.appendChild(contents)
-
-  range.insertNode(a)
-
-  const newRange = document.createRange()
-  newRange.setStartAfter(a)
-  newRange.collapse(true)
-  sel.removeAllRanges()
-  sel.addRange(newRange)
-  op.commit()
-  editorEl.focus()
-  saveSelection()
-}
-
-/** Retire le lien du <a> le plus proche du curseur */
-export function removeLink() {
-  if (!editorEl) return
-  restoreSelection()
-  const sel = window.getSelection()
-  if (!sel || sel.rangeCount === 0) return
-  const node = sel.anchorNode
-  const a = node?.parentElement?.closest('a') || (node as Element)?.closest?.('a')
-  if (!a || !editorEl.contains(a)) return
-  const op = recordOperation('Retirer lien', 'link')
-
-  const parent = a.parentNode!
-  while (a.firstChild) parent.insertBefore(a.firstChild, a)
-  a.remove()
-  op.commit()
-  editorEl.focus()
-}
-
-/** Réinitialise le style de la sélection courante (couleur, fond, taille, police, gras, italique, etc.) */
-export function clearSelectionStyle() {
-  if (!editorEl) return
-  restoreSelection()
-  const sel = window.getSelection()
-  if (!sel || sel.rangeCount === 0) return
-  const range = sel.getRangeAt(0)
-  if (range.collapsed || !editorEl.contains(range.commonAncestorContainer)) return
-
-  const op = recordOperation('Réinitialiser le style', 'format')
-
-  // Retirer bold/italic/underline/strikethrough via execCommand
-  document.execCommand('removeFormat', false, undefined)
-
-  // Parcourir tous les spans dans la sélection pour nettoyer les styles inline
-  const spans = editorEl.querySelectorAll('span')
-  for (const span of spans) {
-    if (!sel.containsNode(span, true)) continue
-    span.style.color = ''
-    span.style.backgroundColor = ''
-    span.style.fontSize = ''
-    span.style.fontFamily = ''
-  }
-
-  op.commit()
-  editorEl.focus()
-  saveSelection()
-}
-
-export function execFormatCommand(cmd: string) {
-  if (!editorEl) return
-  restoreSelection()
-  const labels: Record<string, string> = { bold: 'Gras', italic: 'Italique', underline: 'Souligné', strikeThrough: 'Barré' }
-  const op = recordOperation(labels[cmd] || cmd, 'format')
-  document.execCommand(cmd, false, undefined)
-  op.commit()
-  editorEl.focus()
-  saveSelection()
-}
-
-/**
- * Applique un cycle de couleurs sur la selection en preservant le formatage existant.
- * Chaque caractere non-espace recoit sa couleur dans l'ordre du cycle.
- */
-export function applyColorToSelection(colors: string[], mode: 'text' | 'bg' = 'text', effectLabel?: string) {
-  if (!editorEl || colors.length === 0) return
-  restoreSelection()
-  const sel = window.getSelection()
-  if (!sel || sel.rangeCount === 0) return
-  const range = sel.getRangeAt(0)
-  if (range.collapsed || !editorEl.contains(range.commonAncestorContainer)) return
-
-  const label = effectLabel || (mode === 'bg' ? 'Fond couleur' : 'Couleur')
-  const op = recordOperation(label, 'effect')
-
-  // Extraire le contenu selectionne (preserve <b>, <i>, <u>, <font>, etc.)
-  const fragment = range.extractContents()
-
-  // Walker tous les text nodes du fragment et wrapper chaque caractere
-  const walker = document.createTreeWalker(fragment, NodeFilter.SHOW_TEXT)
-  const textNodes: Text[] = []
-  while (walker.nextNode()) textNodes.push(walker.currentNode as Text)
-
-  const segmentGraphemes = (s: string) => {
-    if (typeof Intl !== 'undefined' && Intl.Segmenter) {
-      return [...new Intl.Segmenter('fr', { granularity: 'grapheme' }).segment(s)].map(g => g.segment)
-    }
-    return [...s]
-  }
-  const isWS = (ch: string) => ch === ' ' || ch === '\n' || ch === '\t'
-
-  let charIdx = 0
-  for (const textNode of textNodes) {
-    const text = textNode.textContent || ''
-    const graphemes = segmentGraphemes(text)
-    const parent = textNode.parentElement
-
-    // Span single-grapheme existant → modifier directement
-    if (parent && parent.tagName === 'SPAN' && parent !== fragment as unknown as Element
-      && parent.childNodes.length === 1 && graphemes.length === 1 && !isWS(graphemes[0])) {
-      if (mode === 'bg') {
-        parent.style.backgroundColor = colors[charIdx % colors.length]
-      } else {
-        parent.style.color = colors[charIdx % colors.length]
-      }
-      charIdx++
-      continue
-    }
-
-    // Cas général — split par grapheme
-    const charFrag = document.createDocumentFragment()
-    for (const char of graphemes) {
-      if (isWS(char)) {
-        charFrag.appendChild(document.createTextNode(char))
-      } else {
-        const span = document.createElement('span')
-        if (mode === 'bg') {
-          span.style.backgroundColor = colors[charIdx % colors.length]
-        } else {
-          span.style.color = colors[charIdx % colors.length]
-        }
-        span.textContent = char
-        charFrag.appendChild(span)
-        charIdx++
-      }
-    }
-    textNode.parentNode?.replaceChild(charFrag, textNode)
-  }
-
-  // Reinjecter le fragment modifie
-  range.insertNode(fragment)
-  op.commit()
-  editorEl.focus()
-  saveSelection()
-}
-
-/**
- * Applique un effet de taille sur la selection.
- * Wrappe le mot dans un span marqueur [data-size-effect] pour permettre le refresh live.
- */
-export function applySizeToSelection(getOffset: (charIdx: number, total: number) => number, baseSize: number, effectLabel?: string, sizeEffectId?: string, amplitude?: number) {
-  if (!editorEl) return
-  restoreSelection()
-  const sel = window.getSelection()
-  if (!sel || sel.rangeCount === 0) return
-  const range = sel.getRangeAt(0)
-  if (range.collapsed || !editorEl.contains(range.commonAncestorContainer)) return
-
-  const op = recordOperation(effectLabel || 'Taille', 'effect')
-
-  const fragment = range.extractContents()
-
-  // Créer un wrapper marqueur pour le refresh live
-  const wrapper = document.createElement('span')
-  if (sizeEffectId) {
-    wrapper.dataset.sizeEffect = sizeEffectId
-    wrapper.dataset.baseSize = String(baseSize)
-    wrapper.dataset.amplitude = String(amplitude ?? 0)
-  }
-
-  // Collecter tous les text nodes
-  const walker = document.createTreeWalker(fragment, NodeFilter.SHOW_TEXT)
-  const textNodes: Text[] = []
-  while (walker.nextNode()) textNodes.push(walker.currentNode as Text)
-
-  // Utilise Intl.Segmenter pour splitter en graphemes (gère emojis, accents, etc.)
-  const segment = (s: string) => {
-    if (typeof Intl !== 'undefined' && Intl.Segmenter) {
-      return [...new Intl.Segmenter('fr', { granularity: 'grapheme' }).segment(s)].map(g => g.segment)
-    }
-    return [...s]
-  }
-
-  const isWhitespace = (ch: string) => ch === ' ' || ch === '\n' || ch === '\t'
-
-  let total = 0
-  for (const tn of textNodes) for (const ch of segment(tn.textContent || '')) if (!isWhitespace(ch)) total++
-
-  let charIdx = 0
-  for (const textNode of textNodes) {
-    const text = textNode.textContent || ''
-    const graphemes = segment(text)
-    const parent = textNode.parentElement
-
-    // Span single-grapheme existant → modifier fontSize en place
-    if (parent && parent.tagName === 'SPAN' && parent !== fragment as unknown as Element
-      && parent.childNodes.length === 1 && graphemes.length === 1 && !isWhitespace(graphemes[0])) {
-      const offset = getOffset(charIdx, total)
-      parent.style.fontSize = `${Math.max(8, Math.round(baseSize + offset))}px`
-      charIdx++
-      continue
-    }
-
-    // Cas général : split en spans par grapheme
-    const charFrag = document.createDocumentFragment()
-    for (const char of graphemes) {
-      if (isWhitespace(char)) {
-        charFrag.appendChild(document.createTextNode(char))
-      } else {
-        const offset = getOffset(charIdx, total)
-        const span = document.createElement('span')
-        span.style.fontSize = `${Math.max(8, Math.round(baseSize + offset))}px`
-        span.textContent = char
-        charFrag.appendChild(span)
-        charIdx++
-      }
-    }
-    textNode.parentNode?.replaceChild(charFrag, textNode)
-  }
-
-  // Mettre le contenu dans le wrapper si on a un effectId
-  if (sizeEffectId) {
-    wrapper.appendChild(fragment)
-    range.insertNode(wrapper)
-  } else {
-    range.insertNode(fragment)
-  }
-  op.commit()
-  editorEl.focus()
-  saveSelection()
-}
-
-/**
- * Recalcule les tailles des mots marqués [data-size-effect] DANS la sélection.
- * L'amplitude de chaque marqueur est PRESERVEE (fixée à l'application de l'effet).
- * Si rien n'est sélectionné, ne touche à rien.
- */
-export function refreshSizeEffects(newBaseSize: number) {
-  if (!editorEl) return
-  const range = savedRange || (() => {
-    const sel = window.getSelection()
-    return sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null
-  })()
-  if (!range || range.collapsed) return
-
-  const markers = editorEl.querySelectorAll<HTMLSpanElement>('[data-size-effect]')
-  for (const marker of markers) {
-    if (!range.intersectsNode(marker)) continue
-
-    const effectId = marker.dataset.sizeEffect!
-    const profile = adminData().sizeEffects?.[effectId]?.profile
-    if (!profile) continue
-
-    const amplitude = Number(marker.dataset.amplitude) || 0
-    marker.dataset.baseSize = String(newBaseSize)
-
-    const charSpans = marker.querySelectorAll<HTMLSpanElement>('span[style*="font-size"]')
-    const total = charSpans.length
-    let charIdx = 0
-    for (const span of charSpans) {
-      const t = total <= 1 ? 0 : charIdx / (total - 1)
-      const offset = amplitude * sampleProfile(profile, t)
-      span.style.fontSize = `${Math.max(8, Math.round(newBaseSize + offset))}px`
-      charIdx++
+  const probe = Math.min(sel.start, atoms.length - 1)
+  if (atoms[probe]?.kind !== 'char' || isSpace(atoms[probe].text)) {
+    // Curseur sur une espace : tenter le caractère précédent
+    if (probe === 0 || atoms[probe - 1]?.kind !== 'char' || isSpace(atoms[probe - 1].text)) {
+      setActiveWord(null); return
     }
   }
+
+  const at = (i: number) => atoms[i]?.kind === 'char' && !isSpace(atoms[i].text)
+  let start = at(probe) ? probe : probe - 1
+  let end = start + 1
+  while (start > 0 && at(start - 1)) start--
+  while (end < atoms.length && at(end)) end++
+
+  const nodes = atomNodes(editorEl)
+  const spans = nodes.slice(start, end).map(n => n.first as HTMLElement).filter(el => el?.tagName === 'SPAN')
+  if (spans.length === 0) { setActiveWord(null); return }
+
+  const s = atoms[start].style
+  const linkEl = (spans[0].closest('a') as HTMLAnchorElement | null)
+
+  setActiveWord({
+    word: atoms.slice(start, end).map(a => a.text).join(''),
+    color: s.color,
+    bg: s.backgroundColor,
+    size: s.fontSize,
+    font: s.fontFamily.split(',')[0].replace(/"/g, '').trim(),
+    bold: s.bold,
+    italic: s.italic,
+    underline: s.underline,
+    strike: s.strike,
+    link: atoms[start].href || null,
+    linkEl,
+    spans,
+    range: { start, end },
+  })
 }
 
-/**
- * Met à jour le fontSize en direct sur les spans sélectionnés
- * qui ne sont PAS dans un marqueur [data-size-effect].
- * Léger (pas de restructuration DOM, pas d'undo) — conçu pour le drag du slider.
- */
-export function resizeLiveSelection(newSize: number) {
-  if (!editorEl) return
-  const range = savedRange || (() => {
-    const sel = window.getSelection()
-    return sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null
-  })()
-  if (!range || range.collapsed) return
-
-  const allSpans = editorEl.querySelectorAll<HTMLSpanElement>('span[style*="font-size"]')
-  for (const span of allSpans) {
-    if (span.closest('[data-size-effect]')) continue
-    if (!range.intersectsNode(span)) continue
-    span.style.fontSize = `${newSize}px`
-  }
+/** Applique un style inline à tout le mot actif */
+export function applyStyleToActiveWord(prop: string, value: string) {
+  const w = activeWordRange()
+  if (!w) return
+  runOp(`Style mot : ${prop}`, 'style', w, r => {
+    switch (prop) {
+      case 'color': ops.setColor(editorEl!, ctx(), r, value); break
+      case 'backgroundColor': ops.setBackground(editorEl!, ctx(), r, value); break
+      case 'fontFamily': ops.setFontFamily(editorEl!, ctx(), r, value); break
+      case 'fontSize': ops.setFontSize(editorEl!, ctx(), r, parseInt(value)); break
+    }
+  })
+  computeWordAtCursor()
 }
+
+/** Ajoute / modifie / supprime le lien du mot actif */
+export function setActiveWordLink(url: string | null, overrideWord?: { range?: AtomRange }) {
+  const w = overrideWord?.range ?? activeWordRange()
+  if (!w) return
+  runOp(url ? `Lien : ${url.replace(/^https?:\/\//, '').slice(0, 25)}` : 'Retirer lien', 'link', w, r => {
+    ops.setLink(editorEl!, ctx(), r, url || '')
+  })
+  computeWordAtCursor()
+}
+
+function activeWordRange(): AtomRange | null {
+  const w = activeWord()
+  return w?.range ?? null
+}
+
+import { activeWord } from '../stores/word-inspect'
 
 /* ── Pagination constants ── */
 const COL_GAP = 24
 const EDITOR_PAD = 20
 const MAX_PAGES = 50
-
-function computeWordAtCursor() {
-  if (!editorEl) { setActiveWord(null); return }
-  const sel = window.getSelection()
-  if (!sel || sel.rangeCount === 0) { setActiveWord(null); return }
-
-  const node = sel.focusNode
-  if (!node || !editorEl.contains(node)) { setActiveWord(null); return }
-
-  // Trouver l'élément le plus proche
-  const el = node.nodeType === Node.ELEMENT_NODE ? node as HTMLElement
-    : node.parentElement
-  if (!el || el === editorEl) { setActiveWord(null); return }
-
-  const spans = getWordSpans(el, editorEl)
-  if (spans.length === 0) { setActiveWord(null); return }
-
-  const first = spans[0]
-  const cs = window.getComputedStyle(first)
-  // Vérifier le lien depuis l'élément sous le curseur, pas depuis le groupe de spans
-  const linkEl = el.closest('a') as HTMLAnchorElement | null
-  const bgRaw = cs.backgroundColor
-  const hasBg = bgRaw && bgRaw !== 'rgba(0, 0, 0, 0)' && bgRaw !== 'transparent'
-
-  const wordData = {
-    word: spans.map(s => s.textContent || '').join(''),
-    color: cs.color,
-    bg: hasBg ? bgRaw : '',
-    size: cs.fontSize,
-    font: cs.fontFamily.split(',')[0].replace(/"/g, '').trim(),
-    bold: parseInt(cs.fontWeight) >= 700,
-    italic: cs.fontStyle === 'italic',
-    underline: cs.textDecorationLine.includes('underline'),
-    strike: cs.textDecorationLine.includes('line-through'),
-    link: linkEl?.getAttribute('href') || null,
-    linkEl,
-    spans,
-  }
-  setActiveWord(wordData)
-}
-
-/** Applique un style inline à tous les spans du mot actif */
-export function applyStyleToActiveWord(prop: string, value: string) {
-  const w = activeWord()
-  if (!w || !editorEl) return
-  const op = recordOperation(`Style mot : ${prop}`, 'style')
-  for (const span of w.spans) {
-    (span as HTMLElement).style[prop as any] = value
-  }
-  op.commit()
-  computeWordAtCursor()
-}
-
-/** Ajoute/modifie/supprime le lien du mot actif (ou d'un mot passé en paramètre) */
-export function setActiveWordLink(url: string | null, overrideWord?: { linkEl: HTMLAnchorElement | null; spans: HTMLElement[] }) {
-  const w = overrideWord || activeWord()
-  if (!w || !editorEl) return
-  const op = recordOperation(url ? `Lien : ${url.replace(/^https?:\/\//, '').slice(0, 25)}` : 'Retirer lien', 'link')
-
-  if (url) {
-    if (w.linkEl) {
-      w.linkEl.href = url
-    } else {
-      const a = document.createElement('a')
-      a.href = url
-      a.target = '_blank'
-      a.style.color = 'inherit'
-      a.style.textDecoration = 'inherit'
-      const parent = w.spans[0].parentNode!
-      parent.insertBefore(a, w.spans[0])
-      for (const s of w.spans) a.appendChild(s)
-    }
-  } else if (w.linkEl) {
-    const parent = w.linkEl.parentNode!
-    while (w.linkEl.firstChild) parent.insertBefore(w.linkEl.firstChild, w.linkEl)
-    w.linkEl.remove()
-  }
-  op.commit()
-  computeWordAtCursor()
-}
-
-/** Extrait le "mot" (group de spans adjacents non-espace) sous un element */
-function getWordSpans(target: HTMLElement, editor: HTMLElement): HTMLElement[] {
-  // Remonter au span direct enfant de l'éditeur ou au span le plus proche
-  let span: HTMLElement | null = target
-  while (span && span.parentElement !== editor && span.parentElement) {
-    span = span.parentElement
-  }
-  if (!span || span === editor) return [target]
-
-  // Collecter les spans adjacents (même mot = pas de whitespace-only entre eux)
-  const spans: HTMLElement[] = [span]
-
-  // Vers la gauche
-  let prev = span.previousSibling
-  while (prev) {
-    if (prev.nodeType === Node.TEXT_NODE && prev.textContent?.trim() === '') break
-    if (prev.nodeType === Node.TEXT_NODE && (prev.textContent === ' ' || prev.textContent === '\n')) break
-    if (prev.nodeType === Node.ELEMENT_NODE) spans.unshift(prev as HTMLElement)
-    else break
-    prev = prev.previousSibling
-  }
-
-  // Vers la droite
-  let next = span.nextSibling
-  while (next) {
-    if (next.nodeType === Node.TEXT_NODE && next.textContent?.trim() === '') break
-    if (next.nodeType === Node.TEXT_NODE && (next.textContent === ' ' || next.textContent === '\n')) break
-    if (next.nodeType === Node.ELEMENT_NODE) spans.push(next as HTMLElement)
-    else break
-    next = next.nextSibling
-  }
-
-  return spans
-}
 
 export function Editor() {
   const [pageLabel, setPageLabel] = createSignal('1 – 3')
@@ -623,14 +385,12 @@ export function Editor() {
 
   let pw = 200   // page width (recalculated on resize)
   let ws = 0     // window start: 0-indexed first visible page
-  let lastVpWidth = 0 // track viewport width to avoid spurious recalcs
+  let lastVpWidth = 0
 
-  /* Recalculate column sizing — ONLY when viewport actually resizes */
   function updateLayout(force?: boolean) {
     if (!viewportEl || !editorEl) return
     const vw = viewportEl.clientWidth
     const ppv = pagesPerView()
-    // Skip if viewport width hasn't actually changed (avoids reflow-triggered recalcs)
     if (!force && vw === lastVpWidth && pw > 50) return
     lastVpWidth = vw
 
@@ -642,7 +402,6 @@ export function Editor() {
     editorEl.style.width = (contentWidth + 2 * EDITOR_PAD) + 'px'
     editorEl.style.columnCount = String(MAX_PAGES)
 
-    // Séparateurs : afficher selon le nombre de pages visibles
     if (ppv >= 2) {
       viewportEl.style.setProperty('--sep-left-1', (EDITOR_PAD + pw + COL_GAP / 2) + 'px')
     } else {
@@ -657,7 +416,6 @@ export function Editor() {
     slideTo(ws)
   }
 
-  /** Get column index from a bounding rect relative to the editor */
   function rectToCol(rect: DOMRect): number {
     if (!editorEl || pw <= 0) return 0
     const editorRect = editorEl.getBoundingClientRect()
@@ -665,78 +423,45 @@ export function Editor() {
     return Math.max(0, Math.min(Math.floor(relX / (pw + COL_GAP)), MAX_PAGES - 1))
   }
 
-  /** Which column is the cursor currently in? */
   function getCursorPage(): number {
     const sel = window.getSelection()
     if (!sel || sel.rangeCount === 0 || !editorEl) return ws
     const range = sel.getRangeAt(0)
     if (!editorEl.contains(range.commonAncestorContainer)) return ws
 
-    // Essai 1 : rect direct du range
     const rect = range.getBoundingClientRect()
-    if (rect.x || rect.y || rect.width || rect.height) {
-      return rectToCol(rect)
-    }
+    if (rect.x || rect.y || rect.width || rect.height) return rectToCol(rect)
 
-    // Essai 2 : noeud voisin (cas classique après frappe — curseur après un span)
-    const container = range.startContainer
-    const offset = range.startOffset
-    if (container === editorEl && offset > 0) {
-      const prev = editorEl.childNodes[offset - 1]
-      if (prev) {
-        const r = prev.nodeType === Node.ELEMENT_NODE
-          ? (prev as Element).getBoundingClientRect()
-          : (() => { const tr = document.createRange(); tr.selectNode(prev); return tr.getBoundingClientRect() })()
-        if (r.x || r.y || r.width || r.height) {
-          const editorRect = editorEl.getBoundingClientRect()
-          const relX = r.right - editorRect.left - EDITOR_PAD
-          return Math.max(0, Math.min(Math.floor(relX / (pw + COL_GAP)), MAX_PAGES - 1))
-        }
-      }
-    }
-
-    // Essai 3 : focusNode
     const node = sel.focusNode
     if (node && node !== editorEl) {
       const el = (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement) as Element | null
       if (el && editorEl.contains(el)) {
         const r = el.getBoundingClientRect()
-        if (r.x || r.y || r.width || r.height) {
-          return rectToCol(r)
-        }
+        if (r.x || r.y || r.width || r.height) return rectToCol(r)
       }
     }
-
     return ws
   }
 
-  /** Which column is the last content in? Uses the END of the last child's bounding rect. */
   function getLastUsedPage(): number {
     if (!editorEl || !editorEl.lastChild || pw <= 0) return 0
     const range = document.createRange()
     range.selectNodeContents(editorEl.lastChild)
     const rect = range.getBoundingClientRect()
     const editorRect = editorEl.getBoundingClientRect()
-    // Use rect.RIGHT to find the last column (not rect.left which gives the first)
     const relX = rect.right - editorRect.left - EDITOR_PAD
     return Math.max(0, Math.min(Math.floor(relX / (pw + COL_GAP)), MAX_PAGES - 1))
   }
 
-  /* Map a page number to the correct window-start.
-     ppv=3: [0,1,2], [2,3,4], [4,5,6], … (step 2)
-     ppv=2: [0,1], [1,2], [2,3], …        (step 1)
-     ppv=1: [0], [1], [2], …              (step 1) */
   function getWindowForPage(page: number): number {
     const ppv = pagesPerView()
     if (ppv === 1) return page
     if (ppv === 2) return Math.max(0, page <= 1 ? 0 : page - 1)
-    // ppv === 3
     if (page < 3) return 0
     return Math.floor((page - 1) / 2) * 2
   }
 
   let checkTimer = 0
-  /** Debounced cursor check — forces reflow then reads cursor position */
   function scheduleCheck() {
     cancelAnimationFrame(checkTimer)
     checkTimer = requestAnimationFrame(() => {
@@ -744,415 +469,147 @@ export function Editor() {
       void editorEl.offsetHeight
       const cp = getCursorPage()
       const ppv = pagesPerView()
-      if (cp < ws || cp >= ws + ppv) {
-        slideTo(getWindowForPage(cp))
-      }
+      if (cp < ws || cp >= ws + ppv) slideTo(getWindowForPage(cp))
       computeWordAtCursor()
     })
   }
 
-  /* Slide the editor so the right pages are visible — NO recursive re-check */
   function slideTo(newWs: number) {
     if (!editorEl) return
     const ppv = pagesPerView()
     ws = Math.max(0, Math.min(newWs, MAX_PAGES - ppv))
     const offset = ws * (pw + COL_GAP)
     editorEl.style.transform = `translateX(-${offset}px)`
-    if (ppv === 1) {
-      setPageLabel(`${ws + 1}`)
-    } else {
-      setPageLabel(`${ws + 1} – ${ws + ppv}`)
-    }
+    setPageLabel(ppv === 1 ? `${ws + 1}` : `${ws + 1} – ${ws + ppv}`)
     setCanGoBack(ws > 0)
   }
 
   function goBack() {
     if (ws <= 0) return
-    const step = pagesPerView() === 3 ? 2 : 1
-    slideTo(ws - step)
+    slideTo(ws - (pagesPerView() === 3 ? 2 : 1))
   }
 
   function goForward() {
     const ppv = pagesPerView()
-    const lastPage = getLastUsedPage()
-    if (ws + ppv > lastPage) return
-    const step = ppv === 3 ? 2 : 1
-    slideTo(ws + step)
+    if (ws + ppv > getLastUsedPage()) return
+    slideTo(ws + (ppv === 3 ? 2 : 1))
   }
 
-  // Recalcule le layout quand on change le nombre de pages visibles
   createEffect(() => {
-    pagesPerView() // track the signal
-    lastVpWidth = 0 // force recalc
+    pagesPerView()
+    lastVpWidth = 0
     updateLayout(true)
   })
 
   onMount(() => {
-    if (editorEl) initUndoSystem(editorEl)
+    if (!editorEl) return
+    initUndoSystem(editorEl)
 
-    document.addEventListener('mousedown', (e) => {
+    const onDocMouseDown = (e: MouseEvent) => {
       if (editorEl && !editorEl.contains(e.target as Node)) saveSelection()
-    })
-    document.addEventListener('keydown', (e) => {
+    }
+    document.addEventListener('mousedown', onDocMouseDown)
+
+    const onKeyDown = (e: KeyboardEvent) => {
       if (!editorEl) return
-      // Undo/redo uniquement si le focus est dans l'éditeur ou si aucun input n'est focus
       const active = document.activeElement
       const inEditor = editorEl.contains(active)
       const inInput = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement || active instanceof HTMLSelectElement
       if (!inEditor && inInput) return
+      if (e.ctrlKey && e.key === 'z') { e.preventDefault(); performUndo(); afterExternalChange() }
+      if (e.ctrlKey && e.key === 'y') { e.preventDefault(); performRedo(); afterExternalChange() }
+    }
+    document.addEventListener('keydown', onKeyDown)
 
-      if (e.ctrlKey && e.key === 'z') { e.preventDefault(); performUndo() }
-      if (e.ctrlKey && e.key === 'y') { e.preventDefault(); performRedo() }
+    /**
+     * Toute saisie passe par les opérations pures.
+     *
+     * L'ancienne version remontait en clonant les ancêtres pour insérer le
+     * span en enfant direct de l'éditeur. Sur un mot portant un effet, ce
+     * clone recopiait `data-size-effect` : le mot se retrouvait coupé en deux
+     * marqueurs de même id, chacun rejouant le profil complet. Ici on insère
+     * dans la liste d'atomes, et le profil se réétale sur le mot élargi.
+     */
+    editorEl.addEventListener('beforeinput', (e) => {
+      if (!editorEl) return
+      const sel = getAtomRange(editorEl)
+      if (!sel) return
+
+      if (e.inputType === 'deleteContentBackward' || e.inputType === 'deleteContentForward') {
+        e.preventDefault()
+        flushTyping()
+        const op = recordOperation('Supprimer', 'format')
+        const forward = e.inputType === 'deleteContentForward'
+        const target: AtomRange = sel.end > sel.start ? sel
+          : forward ? { start: sel.start, end: sel.start + 1 }
+          : { start: Math.max(0, sel.start - 1), end: sel.start }
+        const next = ops.deleteRange(editorEl, ctx(), target)
+        savedSel = next
+        applyAtomRange(editorEl, next)
+        op.commit()
+        scheduleCheck()
+        return
+      }
+
+      if (e.inputType === 'insertParagraph' || e.inputType === 'insertLineBreak') {
+        e.preventDefault()
+        flushTyping()
+        const op = recordOperation('Retour ligne', 'format')
+        const next = ops.insertBreak(editorEl, ctx(), sel, bufferStyle())
+        savedSel = next
+        applyAtomRange(editorEl, next)
+        op.commit()
+        scheduleCheck()
+        return
+      }
+
+      if (e.inputType !== 'insertText' || !e.data) return
+
+      e.preventDefault()
+      const char = e.data === ' ' ? NBSP : e.data
+      recordTypingChar(char)
+      const next = ops.insertText(editorEl, ctx(), sel, char, bufferStyle())
+      savedSel = next
+      applyAtomRange(editorEl, next)
+      scheduleCheck()
     })
 
-    /* Force le style de la hotbar sur chaque caractere tape.
-       Le span est insere comme enfant DIRECT de l'editeur
-       (pas a l'interieur d'un parent style) pour eviter
-       tout heritage de background/color/etc. */
-    if (editorEl) {
-      editorEl.addEventListener('beforeinput', (e) => {
-        // Backspace sur un retour à la ligne → supprimer marqueur + br + zws
-        if (e.inputType === 'deleteContentBackward') {
-          const sel = window.getSelection()
-          if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return // laisser le navigateur gérer les sélections non-collapsed
+    editorEl.addEventListener('paste', (e) => {
+      e.preventDefault()
+      const text = e.clipboardData?.getData('text/plain') || ''
+      if (!text) return
+      insertPlainText(text.replace(/ /g, NBSP), 'Coller')
+      scheduleCheck()
+    })
 
-          const range = sel.getRangeAt(0)
-          let node: Node | null = range.startContainer
-          let off = range.startOffset
+    editorEl.addEventListener('copy', (e) => {
+      const sel = window.getSelection()
+      if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return
+      e.preventDefault()
+      const tmp = document.createElement('div')
+      tmp.appendChild(sel.getRangeAt(0).cloneContents())
+      const cleanHtml = cleanForOutlook(tmp.innerHTML)
+      const plainDiv = document.createElement('div')
+      plainDiv.innerHTML = cleanHtml
+      e.clipboardData?.setData('text/html', cleanHtml)
+      e.clipboardData?.setData('text/plain', (plainDiv.textContent || '').replace(/ /g, ' '))
+    })
 
-          // Trouver le nœud juste avant le curseur
-          let prev: Node | null = null
-          if (node.nodeType === Node.TEXT_NODE) {
-            if (off === 0) {
-              // Curseur au début d'un text node → le nœud précédent
-              prev = node.previousSibling
-            } else if (off === 1 && node.textContent === '\u200B') {
-              // Curseur juste après le zero-width space
-              prev = node // on va supprimer ce zws et chercher le br/marker avant
-            } else {
-              return // position normale dans du texte, laisser le navigateur gérer
-            }
-          } else if (node.nodeType === Node.ELEMENT_NODE) {
-            prev = off > 0 ? node.childNodes[off - 1] : null
-            if (!prev) {
-              // Curseur au début d'un élément → chercher le nœud précédent du parent
-              prev = node.previousSibling
-            }
-          }
-
-          // Remonter les text nodes vides / zws
-          while (prev && prev.nodeType === Node.TEXT_NODE && (prev.textContent === '' || prev.textContent === '\u200B')) {
-            const tmp = prev.previousSibling
-            prev.remove()
-            prev = tmp
-          }
-
-          // Cas 1 : juste après un <br> qui suit un .line-break
-          if (prev && prev.nodeName === 'BR') {
-            const br = prev
-            const beforeBr = br.previousSibling
-            if (beforeBr && (beforeBr as Element).classList?.contains('line-break')) {
-              e.preventDefault()
-              flushTyping()
-              const op = recordOperation('Suppr retour ligne', 'format')
-              // Supprimer aussi le zws après le br s'il existe encore
-              const afterBr = br.nextSibling
-              if (afterBr && afterBr.nodeType === Node.TEXT_NODE && afterBr.textContent === '\u200B') {
-                afterBr.remove()
-              }
-              // Positionner le curseur là où était le marqueur
-              const nr = document.createRange()
-              nr.setStartBefore(beforeBr)
-              nr.collapse(true)
-              br.remove()
-              beforeBr.remove()
-              sel.removeAllRanges()
-              sel.addRange(nr)
-              op.commit()
-              scheduleCheck()
-              return
-            }
-          }
-
-          // Cas 2 : le curseur est juste après le marqueur .line-break lui-même
-          if (prev && (prev as Element).classList?.contains('line-break')) {
-            e.preventDefault()
-            flushTyping()
-            const op = recordOperation('Suppr retour ligne', 'format')
-            const marker = prev
-            // Supprimer le br et le zws qui suivent
-            let nxt = marker.nextSibling
-            if (nxt && nxt.nodeName === 'BR') {
-              const afterBr = nxt.nextSibling
-              if (afterBr && afterBr.nodeType === Node.TEXT_NODE && afterBr.textContent === '\u200B') {
-                afterBr.remove()
-              }
-              nxt.remove()
-            }
-            const nr = document.createRange()
-            nr.setStartBefore(marker)
-            nr.collapse(true)
-            marker.remove()
-            sel.removeAllRanges()
-            sel.addRange(nr)
-            op.commit()
-            scheduleCheck()
-            return
-          }
-        }
-
-        // Retour à la ligne → marqueur visuel + br + br pour contentEditable
-        if (e.inputType === 'insertParagraph' || e.inputType === 'insertLineBreak') {
-          e.preventDefault()
-          flushTyping()
-          const op = recordOperation('Retour ligne', 'format')
-          const sel = window.getSelection()
-          if (sel && sel.rangeCount > 0) {
-            const range = sel.getRangeAt(0)
-            range.deleteContents()
-
-            // Trouver le point d'insertion au niveau direct de l'éditeur
-            // (comme pour les caractères tapés) pour éviter d'hériter du style parent
-            let insertionPoint: Node = range.startContainer
-            let offset = range.startOffset
-
-            // Si on est dans un text node, spliter
-            if (insertionPoint.nodeType === Node.TEXT_NODE) {
-              const textNode = insertionPoint as Text
-              const parent = textNode.parentNode!
-              if (parent !== editorEl) {
-                const after = textNode.splitText(offset)
-                insertionPoint = parent
-                offset = Array.from(parent.childNodes).indexOf(after)
-              } else {
-                textNode.splitText(offset)
-                insertionPoint = editorEl!
-                offset = Array.from(editorEl!.childNodes).indexOf(textNode) + 1
-              }
-            }
-
-            // Remonter et spliter les ancêtres jusqu'à l'éditeur
-            while (insertionPoint !== editorEl && insertionPoint.parentNode !== editorEl) {
-              const parent = insertionPoint.parentNode!
-              const clone = (insertionPoint as Element).cloneNode(false)
-              while (insertionPoint.childNodes[offset]) {
-                clone.appendChild(insertionPoint.childNodes[offset])
-              }
-              parent.insertBefore(clone, insertionPoint.nextSibling)
-              insertionPoint = parent
-              offset = Array.from(parent.childNodes).indexOf(clone)
-            }
-
-            // Déterminer le nœud de référence pour l'insertion
-            let refNode: Node | null = null
-            if (insertionPoint === editorEl) {
-              refNode = editorEl!.childNodes[offset] || null
-            } else {
-              // insertionPoint est un enfant direct de l'éditeur — spliter si nécessaire
-              const clone = (insertionPoint as Element).cloneNode(false)
-              while (insertionPoint.childNodes[offset]) {
-                clone.appendChild(insertionPoint.childNodes[offset])
-              }
-              if (clone.childNodes.length > 0) {
-                editorEl!.insertBefore(clone, insertionPoint.nextSibling)
-              }
-              refNode = insertionPoint.nextSibling
-            }
-
-            // Marqueur visuel ↵ — inséré comme enfant direct de l'éditeur
-            const marker = document.createElement('span')
-            marker.className = 'line-break'
-            marker.setAttribute('contenteditable', 'false')
-            marker.textContent = '↵'
-            editorEl!.insertBefore(marker, refNode)
-
-            // BR après le marqueur pour le vrai saut de ligne
-            const br = document.createElement('br')
-            marker.after(br)
-
-            // Zero-width space après le br pour que le curseur descende visuellement
-            const zws = document.createTextNode('\u200B')
-            br.after(zws)
-
-            // Placer le curseur après le zws
-            const nr = document.createRange()
-            nr.setStartAfter(zws)
-            nr.collapse(true)
-            sel.removeAllRanges()
-            sel.addRange(nr)
-
-            // Nettoyer les éléments vides créés par le split
-            editorEl!.querySelectorAll('span:empty, font:empty, b:empty, i:empty, u:empty').forEach(el => {
-              if (!el.classList.contains('line-break')) el.remove()
-            })
-          }
-          op.commit()
-          scheduleCheck()
-          return
-        }
-
-        if (e.inputType !== 'insertText' || !e.data) return
-
-        e.preventDefault()
-        // Espace → non-breaking space pour éviter la collapse HTML
-        const char = e.data === ' ' ? '\u00A0' : e.data
-        // Snapshot debounce pour pouvoir undo la frappe
-        recordTypingChar(char)
-        const buf = getBuffer()
-
-        const deco: string[] = []
-        if (buf.underline) deco.push('underline')
-        if (buf.strikeThrough) deco.push('line-through')
-
-        const styleParts = [
-          `color:${buf.foreColor}`,
-          `font-size:${buf.fontSize}px`,
-          `font-family:${buf.fontFamily}`,
-          `font-weight:${buf.bold ? '700' : '400'}`,
-          `font-style:${buf.italic ? 'italic' : 'normal'}`,
-          `text-decoration:${deco.length ? deco.join(' ') : 'none'}`,
-        ]
-        if (buf.hiliteColor) styleParts.push(`background-color:${buf.hiliteColor}`)
-
-        const span = document.createElement('span')
-        span.setAttribute('style', styleParts.join(';'))
-        span.textContent = char
-
-        const sel = window.getSelection()
-        if (!sel || sel.rangeCount === 0) return
-        const range = sel.getRangeAt(0)
-        range.deleteContents()
-
-        // Remonter jusqu'a l'editeur en splitant les ancetres
-        // pour que le span soit un enfant direct de l'editeur
-        let insertionPoint: Node = range.startContainer
-        let offset = range.startOffset
-
-        // Si on est dans un text node, le spliter d'abord
-        if (insertionPoint.nodeType === Node.TEXT_NODE) {
-          const textNode = insertionPoint as Text
-          const parent = textNode.parentNode!
-          if (parent !== editorEl) {
-            // Spliter le text node
-            const after = textNode.splitText(offset)
-            insertionPoint = parent
-            offset = Array.from(parent.childNodes).indexOf(after)
-          } else {
-            const after = textNode.splitText(offset)
-            editorEl.insertBefore(span, after)
-            const newRange = document.createRange()
-            newRange.setStartAfter(span)
-            newRange.collapse(true)
-            sel.removeAllRanges()
-            sel.addRange(newRange)
-            return
-          }
-        }
-
-        // Remonter et spliter les ancetres jusqu'a l'editeur
-        while (insertionPoint !== editorEl && insertionPoint.parentNode !== editorEl) {
-          const parent = insertionPoint.parentNode!
-          const clone = (insertionPoint as Element).cloneNode(false)
-          // Deplacer les enfants apres offset dans le clone
-          while (insertionPoint.childNodes[offset]) {
-            clone.appendChild(insertionPoint.childNodes[offset])
-          }
-          parent.insertBefore(clone, insertionPoint.nextSibling)
-          insertionPoint = parent
-          offset = Array.from(parent.childNodes).indexOf(clone)
-        }
-
-        // Inserer le span au bon endroit dans l'editeur
-        if (insertionPoint === editorEl) {
-          const refNode = editorEl.childNodes[offset] || null
-          editorEl.insertBefore(span, refNode)
-        } else {
-          // insertionPoint est un enfant direct de l'editeur
-          const clone = (insertionPoint as Element).cloneNode(false)
-          while (insertionPoint.childNodes[offset]) {
-            clone.appendChild(insertionPoint.childNodes[offset])
-          }
-          editorEl.insertBefore(span, insertionPoint.nextSibling)
-          if (clone.childNodes.length > 0) {
-            editorEl.insertBefore(clone, span.nextSibling)
-          }
-        }
-
-        // Nettoyer les elements vides
-        editorEl.querySelectorAll('span:empty, font:empty, b:empty, i:empty, u:empty').forEach(el => el.remove())
-
-        const newRange = document.createRange()
-        newRange.setStartAfter(span)
-        newRange.collapse(true)
-        sel.removeAllRanges()
-        sel.addRange(newRange)
-
-        scheduleCheck()
-      })
-
-      // Sanitiser les paste — appliquer les styles de la hotbar a chaque caractere
-      editorEl.addEventListener('paste', (e) => {
-        e.preventDefault()
-        const text = e.clipboardData?.getData('text/plain') || ''
-        if (!text) return
-        const buf = getBuffer()
-        const deco: string[] = []
-        if (buf.underline) deco.push('underline')
-        if (buf.strikeThrough) deco.push('line-through')
-        const style = [
-          `color:${buf.foreColor}`,
-          `font-size:${buf.fontSize}px`,
-          `font-family:${buf.fontFamily}`,
-          `font-weight:${buf.bold ? '700' : '400'}`,
-          `font-style:${buf.italic ? 'italic' : 'normal'}`,
-          `text-decoration:${deco.length ? deco.join(' ') : 'none'}`,
-          buf.hiliteColor ? `background-color:${buf.hiliteColor}` : '',
-        ].filter(Boolean).join(';')
-        const html = [...text].map(ch => {
-          if (ch === '\n') return '<span class="line-break" contenteditable="false">↵</span><br>'
-          if (ch === ' ') return ' '
-          const safe = ch.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-          return `<span style="${style}">${safe}</span>`
-        }).join('')
-        replaceSelectionWithHtml(html, 'Coller')
-        scheduleCheck()
-      })
-
-      // Intercepter Ctrl+C / Cmd+C pour nettoyer le HTML avant copie
-      editorEl.addEventListener('copy', (e) => {
-        const sel = window.getSelection()
-        if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return
-        e.preventDefault()
-
-        // Extraire le HTML de la sélection
-        const range = sel.getRangeAt(0)
-        const fragment = range.cloneContents()
-        const tmp = document.createElement('div')
-        tmp.appendChild(fragment)
-
-        // Nettoyer pour Outlook
-        const cleanHtml = cleanForOutlook(tmp.innerHTML)
-
-        // Texte brut : extraire depuis le fragment nettoyé (nbsp → espaces normales)
-        const plainDiv = document.createElement('div')
-        plainDiv.innerHTML = cleanHtml
-        const plainText = (plainDiv.textContent || '').replace(/\u00A0/g, ' ')
-
-        e.clipboardData?.setData('text/html', cleanHtml)
-        e.clipboardData?.setData('text/plain', plainText)
-      })
+    /** Après un undo/redo : le DOM est recréé, on remet l'invariant et on
+     *  invalide la sélection mémorisée qui ne veut plus rien dire. */
+    function afterExternalChange() {
+      if (!editorEl) return
+      normalizeEditor(editorEl, ctx())
+      savedSel = null
+      computeWordAtCursor()
+      scheduleCheck()
     }
 
-    /* Double-clic = selection native du mot (comportement navigateur) */
-
-    /* ── Word hotbar — mise à jour au mouvement du curseur ── */
     const wordCheck = () => requestAnimationFrame(computeWordAtCursor)
-    if (editorEl) {
-      editorEl.addEventListener('click', wordCheck)
-      editorEl.addEventListener('keyup', wordCheck)
-    }
+    editorEl.addEventListener('click', wordCheck)
+    editorEl.addEventListener('keyup', wordCheck)
 
-    const ro = new ResizeObserver(updateLayout)
+    const ro = new ResizeObserver(() => updateLayout())
     if (viewportEl) ro.observe(viewportEl)
     updateLayout()
 
@@ -1161,6 +618,8 @@ export function Editor() {
     onCleanup(() => {
       ro.disconnect()
       document.removeEventListener('selectionchange', scheduleCheck)
+      document.removeEventListener('mousedown', onDocMouseDown)
+      document.removeEventListener('keydown', onKeyDown)
       if (editorEl) {
         editorEl.removeEventListener('click', wordCheck)
         editorEl.removeEventListener('keyup', wordCheck)
@@ -1206,7 +665,6 @@ export function Editor() {
           <span class="page-nav-label">{pageLabel()}</span>
           <button class="page-nav-btn" onClick={goForward}>▸</button>
         </div>
-
       </div>
     </div>
   )
