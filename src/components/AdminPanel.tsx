@@ -6,7 +6,6 @@ import {
   adminSetColorEffect, adminRemoveColorEffect,
   adminRenameSizeEffect,
   adminSetCss, isColorEffectDirty,
-  type AdminColorEffect,
 } from '../stores/admin-data'
 import { sparklineFromProfile } from '../engine/sparkline'
 import { SIZE_ACCENTS } from '../data/accents'

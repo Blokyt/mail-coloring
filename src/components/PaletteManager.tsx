@@ -3,11 +3,10 @@ import { Portal } from 'solid-js/web'
 import { VENETIAN_PALETTE, EXTENDED_PALETTE } from '../data/colors'
 import {
   userPalettes, activePaletteId,
-  getVisibleBaseColors, getActivePalette, isBaseColorHidden,
+  getVisibleBaseColors, isBaseColorHidden,
   toggleBaseColor, resetBaseColors,
   createPalette, deletePalette, renamePalette, setActivePalette,
   addColorToPalette, removeColorFromPalette,
-  type PaletteColor,
 } from '../stores/palettes'
 import { showToast } from './Toast'
 

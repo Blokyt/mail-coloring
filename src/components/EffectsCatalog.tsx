@@ -180,7 +180,11 @@ export function EffectsCatalog(props: Props) {
     setNaming(false)
     setPendingProfile(null)
     setPendingColors(null)
-    setPendingComposed(null)
+    // setPendingComposed n'existe plus (type d'effet « composé » retiré) :
+    // l'appel levait une ReferenceError à chaque annulation, laissant la
+    // modale ouverte. On remet à zéro les mêmes champs que confirmName.
+    setPendingMathExpr(undefined)
+    setPendingMathParams(undefined)
   }
 
   return (

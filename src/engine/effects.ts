@@ -643,7 +643,10 @@ export function cleanForOutlook(html: string): string {
     if (isSpace && last && last.type === 'run' && (last.text === ' ' || last.text === '\u00A0' || /^[\s\u00A0]+$/.test(last.text))) {
       last.text += tok.text
     } else {
-      runs.push({ type: 'run', ...tok })
+      // `type` APRES le spread : sinon `...tok` r\u00E9\u00E9crit le discriminant \u00E0
+      // 'char', le test `last.type === 'run'` ci-dessus n'\u00E9tait jamais vrai
+      // et les espaces cons\u00E9cutives n'\u00E9taient jamais fusionn\u00E9es.
+      runs.push({ ...tok, type: 'run' as const })
     }
   }
 

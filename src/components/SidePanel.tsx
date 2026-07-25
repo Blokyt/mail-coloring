@@ -1,7 +1,7 @@
 import { For, Show, createSignal, createEffect, on } from 'solid-js'
 import { adminData } from '../stores/admin-data'
 import { sparklineFromEffect } from '../engine/sparkline'
-import { baseSize, sizeAmplitude, setCustomSizeProfile } from '../stores/editor'
+import { setCustomSizeProfile } from '../stores/editor'
 import { resolveSizeProfile } from '../stores/size-profiles'
 import { getFavorites, getBaseEffects, getPersoEffects, history, pushHistory, toggleFavorite, type WorkshopEffect } from '../stores/workshops'
 import { getSelectedText, applyColorToSelection, applySizeEffectToSelection } from './Editor'
@@ -30,7 +30,6 @@ function renderColorName(effect: WorkshopEffect): string {
 // ── Composant ──
 
 export function SidePanel(props: { side: 'left' | 'right' }) {
-  const opts = () => ({ baseSize: baseSize(), amplitude: sizeAmplitude() })
   const isLeft = () => props.side === 'left'
   const [selectedTagId, setSelectedTagId] = createSignal<string | null>(null)
 
@@ -128,7 +127,7 @@ export function SidePanel(props: { side: 'left' | 'right' }) {
     const newIds = currentIds.filter(id => !prevHistIds.includes(id))
     if (newIds.length > 0) {
       setAnimatingIds(new Set(newIds))
-      setTimeout(() => setAnimatingIds(new Set()), 350)
+      setTimeout(() => setAnimatingIds(new Set<string>()), 350)
     }
     prevHistIds = currentIds
   }))
@@ -141,7 +140,7 @@ export function SidePanel(props: { side: 'left' | 'right' }) {
     return { "box-shadow": `var(--shadow-x) var(--shadow-y) 0 ${color}` }
   }
 
-  const tagClass = (id: string, extra?: string) => {
+  const tagClass = (extra?: string) => {
     const parts = ['side-tag']
     if (!isLeft()) parts.push('side-tag-size')
     if (extra) parts.push(extra)
@@ -176,7 +175,7 @@ export function SidePanel(props: { side: 'left' | 'right' }) {
   const ColorTag = (p: { effect: WorkshopEffect; extra?: string }) => (
     <div class="side-tag-wrap">
       <button
-        class={tagClass(p.effect.id, p.extra)}
+        class={tagClass(p.extra)}
         style={accentShadow(p.effect.id)}
         innerHTML={renderColorName(p.effect)}
         onClick={() => handleTagClick(p.effect)}
@@ -189,7 +188,7 @@ export function SidePanel(props: { side: 'left' | 'right' }) {
   const SizeTag = (p: { effect: WorkshopEffect; extra?: string }) => (
     <div class="side-tag-wrap">
       <button
-        class={tagClass(p.effect.id, p.extra)}
+        class={tagClass(p.extra)}
         style={accentShadow(p.effect.id)}
         onClick={() => handleTagClick(p.effect)}
         title={p.effect.label}

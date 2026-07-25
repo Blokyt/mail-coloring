@@ -48,7 +48,7 @@ function nodeToPath(node: Node, root: HTMLElement): number[] | null {
   const path: number[] = []
   let current: Node | null = node
   while (current && current !== root) {
-    const parent = current.parentNode
+    const parent: Node | null = current.parentNode
     if (!parent) return null
     const idx = Array.from(parent.childNodes).indexOf(current as ChildNode)
     if (idx === -1) return null
@@ -157,12 +157,8 @@ function pushEntry(entry: UndoEntry) {
 
 export function initUndoSystem(el: HTMLDivElement) {
   editorRef = el
-  // Sauvegarder l'état initial (vide) pour pouvoir y revenir avec undo
-  initialHtml = compressToUTF16(el.innerHTML)
 }
 
-// État initial — permet de revenir à "vide" même après la première opération
-let initialHtml: string | null = null
 
 /**
  * Enregistre une opération nommée. Appeler AVANT la mutation DOM.
