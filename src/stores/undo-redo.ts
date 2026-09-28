@@ -6,10 +6,18 @@
  * - Labels nommés + catégories pour l'historique visible
  * - Navigation par saut (jumpToEntry)
  * - 500 entrées max (~7-9MB compressé)
+ *
+ * La compression est DIFFÉRÉE : comprimer tout le innerHTML (1-2 Mo sur
+ * quelques pages) prenait des dizaines de millisecondes, et arrivait à
+ * CHAQUE frontière de mot — le hoquet ressenti en frappe. Les entrées
+ * entrent brutes et se compriment en temps d'inactivité du navigateur,
+ * avec un garde-fou mémoire : au-delà de MAX_RAW entrées brutes, la
+ * compression redevient synchrone.
  */
 
 import { createSignal, type Accessor } from 'solid-js'
 import { compressToUTF16, decompressFromUTF16 } from 'lz-string'
+import { invalidateDocCache } from '../engine/editor-dom'
 
 /* ══════════════════════════════════════════
    Types
@@ -27,7 +35,8 @@ export type OpCategory = 'typing' | 'format' | 'effect' | 'link' | 'insert' | 's
 export interface UndoEntry {
   label: string
   category: OpCategory
-  html: string           // compressé LZ-string (UTF16)
+  html: string           // compressé LZ-string (UTF16) si `compressed`
+  compressed: boolean    // false = encore brut, compression différée
   cursorBefore: CursorState | null
   cursorAfter: CursorState | null
   timestamp: number
@@ -150,9 +159,52 @@ export const historyEntries: Accessor<HistoryItem[]> = () => {
    Core operations
    ══════════════════════════════════════════ */
 
+/* ── Compression différée ───────────────────────────────────────
+ * Les entrées entrent brutes (coût : sérialisation innerHTML seule),
+ * la compression LZ passe en temps d'inactivité. MAX_RAW bornes la
+ * mémoire transitoire ; au-delà, on comprime tout, synchrone. */
+
+const MAX_RAW = 16
+let compressScheduled = false
+
+function rawCount(): number {
+  return [...undoStack(), ...redoStack()].filter(e => !e.compressed).length
+}
+
+function compressRawEntries(all: boolean) {
+  const pack = (stack: UndoEntry[]): UndoEntry[] =>
+    stack.map(e => {
+      if (e.compressed) return e
+      if (!all && rawCount() <= 0) return e
+      return { ...e, html: compressToUTF16(e.html), compressed: true }
+    })
+  setUndoStack(pack(undoStack()))
+  setRedoStack(pack(redoStack()))
+}
+
+function scheduleCompression() {
+  if (rawCount() > MAX_RAW) {
+    compressRawEntries(true)
+    return
+  }
+  if (compressScheduled) return
+  compressScheduled = true
+  const run = () => {
+    compressScheduled = false
+    if (rawCount() === 0) return
+    compressRawEntries(true)
+  }
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(run, { timeout: 3000 })
+  } else {
+    setTimeout(run, 400)
+  }
+}
+
 function pushEntry(entry: UndoEntry) {
   setUndoStack(prev => [...prev.slice(-(MAX_ENTRIES - 1)), entry])
   setRedoStack([]) // nouvelle branche
+  scheduleCompression()
 }
 
 export function initUndoSystem(el: HTMLDivElement) {
@@ -178,7 +230,8 @@ export function recordOperation(label: string, category: OpCategory): { commit: 
       pushEntry({
         label,
         category,
-        html: compressToUTF16(htmlBefore),
+        html: htmlBefore,
+        compressed: false,
         cursorBefore,
         cursorAfter,
         timestamp: Date.now(),
@@ -192,7 +245,7 @@ export function recordOperation(label: string, category: OpCategory): { commit: 
    ══════════════════════════════════════════ */
 
 interface TypingGroup {
-  htmlCompressed: string
+  html: string
   cursorBefore: CursorState | null
   chars: string
   lastChar: string
@@ -212,7 +265,8 @@ function commitGroup() {
   pushEntry({
     label,
     category: 'typing',
-    html: activeGroup.htmlCompressed,
+    html: activeGroup.html,
+    compressed: false,
     cursorBefore: activeGroup.cursorBefore,
     cursorAfter: serializeCursor(editorRef),
     timestamp: Date.now(),
@@ -245,7 +299,7 @@ export function recordTypingChar(char: string) {
 
   if (!activeGroup) {
     activeGroup = {
-      htmlCompressed: compressToUTF16(editorRef.innerHTML),
+      html: editorRef.innerHTML,
       cursorBefore: serializeCursor(editorRef),
       chars: '',
       lastChar: '',
@@ -276,15 +330,17 @@ export function performUndo(): boolean {
   const currentCursor = serializeCursor(editorRef)
 
   // Restaurer l'état
-  const restored = decompressFromUTF16(entry.html)
+  const restored = entry.compressed ? decompressFromUTF16(entry.html) : entry.html
   if (restored === null) return false
   editorRef.innerHTML = restored
+  invalidateDocCache(editorRef)
 
   // Pousser l'état actuel dans redo
   setRedoStack(prev => [...prev, {
     label: entry.label,
     category: entry.category,
-    html: compressToUTF16(currentHtml),
+    html: currentHtml,
+    compressed: false,
     cursorBefore: entry.cursorAfter, // inversé pour redo
     cursorAfter: currentCursor,
     timestamp: entry.timestamp,
@@ -309,15 +365,17 @@ export function performRedo(): boolean {
   const currentCursor = serializeCursor(editorRef)
 
   // Restaurer l'état
-  const restored = decompressFromUTF16(entry.html)
+  const restored = entry.compressed ? decompressFromUTF16(entry.html) : entry.html
   if (restored === null) return false
   editorRef.innerHTML = restored
+  invalidateDocCache(editorRef)
 
   // Pousser l'état actuel dans undo
   setUndoStack(prev => [...prev.slice(-(MAX_ENTRIES - 1)), {
     label: entry.label,
     category: entry.category,
-    html: compressToUTF16(currentHtml),
+    html: currentHtml,
+    compressed: false,
     cursorBefore: currentCursor,
     cursorAfter: entry.cursorAfter,
     timestamp: entry.timestamp,

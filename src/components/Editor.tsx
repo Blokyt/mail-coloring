@@ -13,6 +13,7 @@ import {
   atomNodes,
   getAtomRange,
   applyAtomRange,
+  readCharStyle,
   isSpace,
   NBSP,
 } from '../engine/editor-dom'
@@ -301,38 +302,56 @@ export function insertPlainText(text: string, label = 'Insérer') {
  * L'ancienne version stockait les nœuds dans un signal : après un undo (qui
  * remplace innerHTML) ou après n'importe quelle opération, ces références
  * étaient orphelines et la hotbar écrivait dans des nœuds détachés.
+ *
+ * Perf : lit le document par les NŒUDS en cache (atomNodes), jamais par
+ * readAtoms — relire tous les atomes à chaque frappe était en O(document).
  */
 function computeWordAtCursor() {
   if (!editorEl) { setActiveWord(null); return }
   const sel = getAtomRange(editorEl)
   if (!sel) { setActiveWord(null); return }
 
-  const atoms = readAtoms(editorEl)
-  if (atoms.length === 0) { setActiveWord(null); return }
+  const nodes = atomNodes(editorEl)
+  if (nodes.length === 0) { setActiveWord(null); return }
 
-  const probe = Math.min(sel.start, atoms.length - 1)
-  if (atoms[probe]?.kind !== 'char' || isSpace(atoms[probe].text)) {
+  /** Texte et nature de l'atome i, lus depuis son nœud */
+  const atomAt = (i: number): { kind: 'char' | 'break'; text: string; el: HTMLElement } | null => {
+    const el = nodes[i]?.first as HTMLElement | undefined
+    if (!el) return null
+    if (el.classList.contains('line-break')) return { kind: 'break', text: '\n', el }
+    if (el.tagName === 'BR') return { kind: 'break', text: '\n', el }
+    if (el.tagName !== 'SPAN') return null
+    return { kind: 'char', text: el.textContent || '', el }
+  }
+
+  const probe = Math.min(sel.start, nodes.length - 1)
+  const atProbe = atomAt(probe)
+  if (atProbe?.kind !== 'char' || isSpace(atProbe.text)) {
     // Curseur sur une espace : tenter le caractère précédent
-    if (probe === 0 || atoms[probe - 1]?.kind !== 'char' || isSpace(atoms[probe - 1].text)) {
-      setActiveWord(null); return
+    const prev = probe === 0 ? null : atomAt(probe - 1)
+    if (!prev || prev.kind !== 'char' || isSpace(prev.text)) {
+      setActiveWord(null)
+      return
     }
   }
 
-  const at = (i: number) => atoms[i]?.kind === 'char' && !isSpace(atoms[i].text)
+  const at = (i: number) => {
+    const a = atomAt(i)
+    return a?.kind === 'char' && !isSpace(a.text)
+  }
   let start = at(probe) ? probe : probe - 1
   let end = start + 1
   while (start > 0 && at(start - 1)) start--
-  while (end < atoms.length && at(end)) end++
+  while (end < nodes.length && at(end)) end++
 
-  const nodes = atomNodes(editorEl)
   const spans = nodes.slice(start, end).map(n => n.first as HTMLElement).filter(el => el?.tagName === 'SPAN')
   if (spans.length === 0) { setActiveWord(null); return }
 
-  const s = atoms[start].style
+  const s = readCharStyle(spans[0])
   const linkEl = (spans[0].closest('a') as HTMLAnchorElement | null)
 
   setActiveWord({
-    word: atoms.slice(start, end).map(a => a.text).join(''),
+    word: nodes.slice(start, end).map((_, i) => atomAt(start + i)?.text ?? '').join(''),
     color: s.color,
     bg: s.backgroundColor,
     size: s.fontSize,
@@ -341,7 +360,7 @@ function computeWordAtCursor() {
     italic: s.italic,
     underline: s.underline,
     strike: s.strike,
-    link: atoms[start].href || null,
+    link: linkEl?.getAttribute('href') || null,
     linkEl,
     spans,
     range: { start, end },
@@ -549,7 +568,8 @@ export function Editor() {
         const target: AtomRange = sel.end > sel.start ? sel
           : forward ? { start: sel.start, end: sel.start + 1 }
           : { start: Math.max(0, sel.start - 1), end: sel.start }
-        const next = ops.deleteRange(editorEl, ctx(), target)
+        const next = ops.deleteRangeInPlace(editorEl, ctx(), target)
+          ?? ops.deleteRange(editorEl, ctx(), target)
         savedSel = next
         applyAtomRange(editorEl, next)
         op.commit()
@@ -574,7 +594,9 @@ export function Editor() {
       e.preventDefault()
       const char = e.data === ' ' ? NBSP : e.data
       recordTypingChar(char)
-      const next = ops.insertText(editorEl, ctx(), sel, char, bufferStyle())
+      // Chemin rapide en place ; repli complet si le cache n'est pas exploitable
+      const next = ops.insertTextInPlace(editorEl, ctx(), sel, char, bufferStyle())
+        ?? ops.insertText(editorEl, ctx(), sel, char, bufferStyle())
       savedSel = next
       applyAtomRange(editorEl, next)
       scheduleCheck()

@@ -43,7 +43,8 @@ export function graphemes(s: string): string[] {
 
 /** Espace insécable — la frappe insère celui-ci, pas U+0020 */
 export const NBSP = ' '
-const ZWS = '​'
+/** Zero-width space terminant le groupe de saut de ligne (export pour les chemins rapides) */
+export const ZWS = '​'
 
 /** Un graphème compte-t-il comme de l'espace ?
  *  Inclut le NBSP, que l'ancien code oubliait — d'où les cycles de couleur
@@ -163,6 +164,94 @@ export interface AtomNodes {
   last: Node
 }
 
+/* ══════════════════════════════════════════
+   Cache du document
+   ══════════════════════════════════════════ */
+
+/**
+ * La frappe relit le document plusieurs fois par caractère (sélection,
+ * mot actif, historique). Lire le DOM à chaque fois est en O(n) : sur
+ * quelques pages de texte c'est la latence ressentie. Le cache rend la
+ * lecture gratuite tant que rien n'a changé.
+ *
+ * Loi du cache : il n'est VALIDE qu'entre deux mutations du document.
+ * - writeAtoms() le rafraîchit (structure + styles) : c'est le seul
+ *   générateur autoritaire, toute opération complète y passe.
+ * - Les chemins rapides en place (editor-ops) le SPLICENT atomiquement,
+ *   exactement comme writeAtoms l'aurait reconstruit.
+ * - Toute écriture du DOM HORS de ce module (undo/redo via innerHTML)
+ *   doit appeler invalidateDocCache().
+ * - Une écriture de STYLE sans changer la structure (applySizeEffects,
+ *   previewBaseSize) invalide la seule tranche `atoms`.
+ */
+interface DocCache {
+  atoms: Atom[] | null
+  nodes: AtomNodes[] | null
+  /** Empreinte structurelle des enfants directs de root — détecte toute
+   *  réécriture du DOM hors de ce module (undo via innerHTML, etc.) :
+   *  si elle ne correspond plus, le cache est jeté et relu. */
+  firstChild: ChildNode | null
+  lastChild: ChildNode | null
+  childCount: number
+}
+
+const docCache = new WeakMap<HTMLElement, DocCache>()
+
+/** Le cache correspond-t-il encore au DOM vivant ? (jeté sinon) */
+function liveCache(root: HTMLElement): DocCache | null {
+  const c = docCache.get(root)
+  if (!c) return null
+  if (c.firstChild !== root.firstChild || c.lastChild !== root.lastChild
+    || c.childCount !== root.childNodes.length) {
+    docCache.delete(root)
+    return null
+  }
+  return c
+}
+
+/** Invalide tout le cache (structure + styles) — après innerHTML externe. */
+export function invalidateDocCache(root: HTMLElement) {
+  docCache.delete(root)
+}
+
+/** Restampe l'empreinte après une mutation en place (chemins rapides) :
+ *  la structure du cache a déjà été spliceée, seule l'empreinte des enfants
+ *  directs de root doit suivre le DOM. */
+export function reStampDocCache(root: HTMLElement) {
+  const c = docCache.get(root)
+  if (!c) return
+  c.firstChild = root.firstChild
+  c.lastChild = root.lastChild
+  c.childCount = root.childNodes.length
+}
+
+/** Invalide la tranche styles du cache (structure inchangée). */
+function invalidateAtomCache(root: HTMLElement) {
+  const c = docCache.get(root)
+  if (c) c.atoms = null
+}
+
+/** Cache brut — utilisé par les chemins rapides en place de editor-ops.
+ *  `atoms` est null quand les styles ont été réécrits depuis la dernière
+ *  lecture (re-dérivation des tailles) ; `nodes` reste valide tant que la
+ *  structure n'a pas changé. */
+export function peekDocCache(root: HTMLElement): { atoms: Atom[] | null; nodes: AtomNodes[] } | null {
+  const c = liveCache(root)
+  if (c?.nodes) return { atoms: c.atoms, nodes: c.nodes }
+  return null
+}
+
+/** Rafraîchit le cache depuis le DOM vivant. */
+function refreshDocCache(root: HTMLElement, atoms: Atom[] | null, nodes: AtomNodes[] | null) {
+  const c = docCache.get(root) ?? { atoms: null, nodes: null, firstChild: null, lastChild: null, childCount: -1 }
+  if (atoms) c.atoms = atoms
+  if (nodes) c.nodes = nodes
+  c.firstChild = root.firstChild
+  c.lastChild = root.lastChild
+  c.childCount = root.childNodes.length
+  docCache.set(root, c)
+}
+
 /**
  * Lit le document en une liste plate d'atomes.
  * C'est la seule lecture du DOM : tout le reste du système travaille
@@ -170,6 +259,8 @@ export interface AtomNodes {
  * quand le DOM est entièrement reconstruit (undo, normalisation).
  */
 export function readAtoms(root: HTMLElement): Atom[] {
+  const cached = liveCache(root)?.atoms
+  if (cached) return cached
   const atoms: Atom[] = []
 
   function walk(node: Node, style: CharStyle, href: string, effectId: string) {
@@ -211,6 +302,7 @@ export function readAtoms(root: HTMLElement): Atom[] {
     walk(child, EMPTY_STYLE, '', '')
   }
 
+  refreshDocCache(root, atoms, null)
   return atoms
 }
 
@@ -283,6 +375,7 @@ export function writeAtoms(root: HTMLElement, atoms: Atom[]): AtomNodes[] {
   }
 
   root.replaceChildren(frag)
+  refreshDocCache(root, atoms, nodes)
   return nodes
 }
 
@@ -314,8 +407,15 @@ export interface SizeContext {
  * L'amplitude vaut la taille de base : la plus grande lettre fait le double
  * de la plus petite, à toute échelle.
  */
-export function applySizeEffects(root: HTMLElement, ctx: SizeContext) {
-  const markers = root.querySelectorAll<HTMLElement>('[data-size-effect]')
+export function applySizeEffects(root: HTMLElement, ctx: SizeContext, scope?: Element) {
+  // `scope` limite la re-derivation aux marqueurs d'une sous-arbre (chemin
+  // rapide de la frappe : un seul mot change, le reste du document n'a
+  // aucune raison d'etre relancé). Sans scope : tout le document.
+  const markers: HTMLElement[] = scope
+    ? scope.matches('[data-size-effect]')
+      ? [scope as HTMLElement]
+      : [...scope.querySelectorAll<HTMLElement>('[data-size-effect]')]
+    : [...root.querySelectorAll<HTMLElement>('[data-size-effect]')]
 
   for (const marker of markers) {
     const profile = ctx.resolveProfile(marker.dataset.sizeEffect || '')
@@ -332,13 +432,17 @@ export function applySizeEffects(root: HTMLElement, ctx: SizeContext) {
 
     const inked = spans.filter(s => !isSpace(s.textContent || ''))
     const total = inked.length
+    // Rang par Map : inked.indexOf(span) dans la boucle était O(k²) par
+    // marqueur — le coût dominant des longs mots à effet.
+    const rank = new Map<HTMLElement, number>()
+    for (let i = 0; i < inked.length; i++) rank.set(inked[i], i)
 
     for (const span of spans) {
       const style = readCharStyle(span)
       if (isSpace(span.textContent || '')) {
         style.fontSize = `${ctx.baseSize}px`
       } else {
-        const t = total <= 1 ? 0 : inked.indexOf(span) / (total - 1)
+        const t = total <= 1 ? 0 : (rank.get(span) ?? 0) / (total - 1)
         const size = Math.max(
           MIN_SIZE,
           Math.round(ctx.baseSize + ctx.baseSize * sample(profile, t)),
@@ -348,6 +452,10 @@ export function applySizeEffects(root: HTMLElement, ctx: SizeContext) {
       writeCharStyle(span, style)
     }
   }
+
+  // Les styles des atomes ont changé : la tranche `atoms` du cache n'est
+  // plus garanties synchrones du DOM.
+  invalidateAtomCache(root)
 }
 
 const MIN_SIZE = 8
@@ -389,6 +497,8 @@ export interface AtomRange {
 
 /** Liste ordonnée des nœuds d'atomes présents dans le DOM courant */
 export function atomNodes(root: HTMLElement): AtomNodes[] {
+  const cached = liveCache(root)?.nodes
+  if (cached) return cached
   const out: AtomNodes[] = []
 
   function walk(node: Node) {
@@ -418,6 +528,7 @@ export function atomNodes(root: HTMLElement): AtomNodes[] {
   }
 
   for (const child of Array.from(root.childNodes)) walk(child)
+  refreshDocCache(root, null, out)
   return out
 }
 
@@ -461,12 +572,67 @@ function atomsBefore(root: HTMLElement, container: Node, offset: number): number
   return countAtoms(probe.cloneContents())
 }
 
+/**
+ * Index d'atome du point (container, offset) : nombre d'atomes dont le
+ * début est STRICTEMENT AVANT le point (sémantique exacte d'atomsBefore :
+ * un atome compte dès qu'une partie de ses nœuds précède le curseur).
+ *
+ * Recherche binaire sur les débuts d'atomes, qui croissent dans l'ordre
+ * du document. Retourne null si l'environnement ne sait pas comparer des
+ * frontières de Range (l'appelant retombe alors sur atomsBefore).
+ */
+function atomIndexAtPoint(point: Range, nodes: AtomNodes[]): number | null {
+  if (nodes.length === 0) return 0
+  if (typeof Range.prototype.compareBoundaryPoints !== 'function') return null
+
+  const probe = document.createRange()
+  let lo = 0
+  let hi = nodes.length
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    try {
+      probe.selectNodeContents(nodes[mid].first)
+    } catch {
+      return null
+    }
+    // debut(mid) < point ?
+    if (probe.compareBoundaryPoints(Range.START_TO_START, point) === -1) lo = mid + 1
+    else hi = mid
+  }
+  return lo
+}
+
 /** Lit la sélection courante en offsets d'atomes. null si hors éditeur. */
 export function getAtomRange(root: HTMLElement): AtomRange | null {
   const sel = window.getSelection()
   if (!sel || sel.rangeCount === 0) return null
   const range = sel.getRangeAt(0)
   if (!root.contains(range.commonAncestorContainer)) return null
+
+  // Chemin rapide : avec les nœuds en cache, une recherche binaire remplace
+  // le clonage du préfixe (atomsBefore allouait un fragment par lecture).
+  const nodes = liveCache(root)?.nodes
+  if (nodes) {
+    const point = document.createRange()
+    try {
+      point.setStart(range.startContainer, range.startOffset)
+      point.collapse(true)
+      const start = atomIndexAtPoint(point, nodes)
+      if (start !== null) {
+        if (range.collapsed) return { start, end: start }
+        try {
+          point.setStart(range.endContainer, range.endOffset)
+          point.collapse(true)
+        } catch {
+          return { start, end: start }
+        }
+        const end = atomIndexAtPoint(point, nodes)
+        if (end !== null) return { start, end: Math.max(start, end) }
+      }
+    } catch {
+      // frontière non représentable : repli ci-dessous
+    }
+  }
 
   const start = atomsBefore(root, range.startContainer, range.startOffset)
   const end = range.collapsed

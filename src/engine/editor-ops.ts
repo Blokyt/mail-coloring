@@ -29,6 +29,10 @@ import {
   applySizeEffects,
   readCharStyle,
   writeCharStyle,
+  peekDocCache,
+  reStampDocCache,
+  styleToCss,
+  ZWS,
 } from './editor-dom'
 
 /* ══════════════════════════════════════════
@@ -313,6 +317,236 @@ export function setBaseSize(root: HTMLElement, baseSize: number, resolveProfile:
       return { ...a, style: { ...a.style, fontSize: `${baseSize}px` } }
     }),
   )
+}
+
+/* ══════════════════════════════════════════
+   Chemins rapides en place — la frappe
+   ══════════════════════════════════════════ */
+
+/**
+ * Le chemin complet (readAtoms + writeAtoms + applySizeEffects) reconstruit
+ * TOUT le document à chaque frappe : sur quelques pages, chaque caractère
+ * tapé recréait des dizaines de milliers de nœuds. C'était la latence
+ * ressentie au bout de quelques pages.
+ *
+ * Les chemins rapides font la même chose EN PLACE : retirer les nœuds des
+ * atomes touchés, insérer les nouveaux spans au bon conteneur, splicer le
+ * cache du document, re-dériver les tailles du seul marqueur touché.
+ *
+ * MÊME RÉSULTAT que le chemin complet — c'est la propriété centrale du
+ * projet, vérifiée par test (parité fast/complete). Tout cas de bord non
+ * traité retourne null et l'appelant retombe sur le chemin complet :
+ * l'invariant ne peut pas être violé, au pire on paye le coût complet.
+ */
+
+/** Retire les nœuds des atomes [start, end) du DOM, en place.
+ *  Retourne false si un cas de bord exige le chemin complet. */
+function removeAtomsInPlace(
+  root: HTMLElement,
+  nodes: { first: Node; last: Node }[],
+  start: number,
+  end: number,
+): boolean {
+  if (start >= end) return true
+  if (start < 0 || end > nodes.length) return false
+
+  // Conteneurs (marqueur / lien) touchés par la coupe
+  const touchedParents = new Set<HTMLElement>()
+
+  for (let i = start; i < end; i++) {
+    const { first, last } = nodes[i]
+    if (!first.parentNode) return false
+    let el: HTMLElement | null = first.parentElement
+    while (el && el !== root) {
+      touchedParents.add(el)
+      el = el.parentElement
+    }
+    // Retirer first..last : ils sont consécutifs dans leur parent
+    let cur: Node | null = first
+    while (cur) {
+      const next: Node | null = cur.nextSibling
+      cur.parentNode?.removeChild(cur)
+      if (cur === last) break
+      cur = next
+    }
+  }
+
+  // Conteneurs vidés : writeAtoms ne les aurait pas créés
+  for (const p of touchedParents) {
+    let el: HTMLElement | null = p
+    while (el && el !== root && !el.firstChild) {
+      const up: HTMLElement | null = el.parentElement
+      el.remove()
+      el = up
+    }
+  }
+
+  // Cas de bord refusé : la coupe rend ADJACENTS deux marqueurs de même id
+  // (l'invariant les fusionne) ou deux liens de même href. Rare : repli.
+  const beforeNode = start > 0 ? nodes[start - 1].first : null
+  const afterNode = end < nodes.length ? nodes[end].first : null
+  if (beforeNode && afterNode) {
+    const mB = (beforeNode as HTMLElement).closest?.('[data-size-effect]') ?? null
+    const mA = (afterNode as HTMLElement).closest?.('[data-size-effect]') ?? null
+    if (mB && mA && mB !== mA && (mB as HTMLElement).dataset.sizeEffect === (mA as HTMLElement).dataset.sizeEffect) return false
+    const aB = (beforeNode as HTMLElement).closest?.('a') ?? null
+    const aA = (afterNode as HTMLElement).closest?.('a') ?? null
+    if (aB && aA && aB !== aA && (aB as HTMLAnchorElement).getAttribute('href') === (aA as HTMLAnchorElement).getAttribute('href')) return false
+  }
+
+  return true
+}
+
+/** Marqueur d'effet contenant l'atome d'index i (ou null). */
+function markerOfAtom(nodes: { first: Node }[], i: number): HTMLElement | null {
+  const el = nodes[i]?.first as HTMLElement | undefined
+  if (!el?.closest) return null
+  return el.closest('[data-size-effect]')
+}
+
+/** Premier nœud ancêtre de `node` enfant direct de root. */
+function topLevelRef(root: HTMLElement, node: Node | null): Node | null {
+  if (!node) return null
+  let cur: Node = node
+  while (cur.parentNode && cur.parentNode !== root) cur = cur.parentNode
+  return cur.parentNode === root ? cur : null
+}
+
+/**
+ * Insère du texte à la position `r` SANS reconstruire le document.
+ * Même sémantique, même résultat que insertText() — voir le test de parité.
+ * Retourne null quand le cas demande le chemin complet.
+ */
+export function insertTextInPlace(
+  root: HTMLElement,
+  ctx: SizeContext,
+  r: AtomRange,
+  text: string,
+  style: CharStyle,
+): AtomRange | null {
+  // Le cache de nœuds doit exister et être synchronisé du DOM vivant
+  const cache = peekDocCache(root)
+  if (!cache) return null
+  const nodes = cache.nodes
+
+  // Suppression de la sélection, en place
+  if (r.end > r.start) {
+    if (r.end > nodes.length) return null
+    if (!removeAtomsInPlace(root, nodes, r.start, r.end)) return null
+    if (cache.atoms) cache.atoms.splice(r.start, r.end - r.start)
+    nodes.splice(r.start, r.end - r.start)
+  }
+
+  // Héritage STRICTEMENT identique à insertText : les deux bords doivent
+  // partager le marqueur/lien pour que l'insertion prolonge le conteneur.
+  // Lu sur le DOM (même conteneur élément = même id/href), pas sur les
+  // atomes : la tranche `atoms` du cache peut être périmée.
+  const isLeafChar = (el: Node | null): el is HTMLElement =>
+    !!el && (el as HTMLElement).tagName === 'SPAN' && !(el as HTMLElement).classList.contains('line-break')
+  const beforeNode = r.start > 0 ? (nodes[r.start - 1].first as HTMLElement) : null
+  const afterNode = r.start < nodes.length ? (nodes[r.start].first as HTMLElement) : null
+  const mB = isLeafChar(beforeNode) ? beforeNode.closest('[data-size-effect]') : null
+  const mA = isLeafChar(afterNode) ? afterNode.closest('[data-size-effect]') : null
+  const aB = isLeafChar(beforeNode) ? beforeNode.closest('a') : null
+  const aA = isLeafChar(afterNode) ? afterNode.closest('a') : null
+  const inheritEffect = mB && mA && mB === mA
+    ? (mB as HTMLElement).dataset.sizeEffect || '' : ''
+  const inheritHref = aB && aA && aB === aA
+    ? (aB as HTMLAnchorElement).getAttribute('href') || '' : ''
+
+  const inserted: Atom[] = graphemes(text).map(g =>
+    g === '\n'
+      ? { kind: 'break' as const, text: '\n', style, href: '', effectId: '' }
+      : { kind: 'char' as const, text: g, style, href: inheritHref, effectId: inheritEffect },
+  )
+  if (inserted.length === 0) return { start: r.start, end: r.start }
+
+  // Position DOM : dans le conteneur partagé si héritage, sinon au niveau
+  // root — exactement la structure que writeAtoms produirait.
+  let parent: Node
+  let ref: Node | null
+  if ((inheritEffect || inheritHref) && afterNode) {
+    ref = nodes[r.start].first
+    parent = ref.parentNode ?? root
+    if (parent === root) return null // conteneur attendu, pas trouvé : repli
+  } else {
+    parent = root
+    ref = afterNode ? topLevelRef(root, nodes[r.start].first) : null
+  }
+
+  const newNodes: { first: Node; last: Node }[] = []
+  for (const atom of inserted) {
+    if (atom.kind === 'break') {
+      const marker = document.createElement('span')
+      marker.className = 'line-break'
+      marker.setAttribute('contenteditable', 'false')
+      marker.textContent = '↵'
+      const br = document.createElement('br')
+      const zws = document.createTextNode(ZWS)
+      parent.insertBefore(marker, ref)
+      parent.insertBefore(br, ref)
+      parent.insertBefore(zws, ref)
+      newNodes.push({ first: marker, last: zws })
+    } else {
+      const span = document.createElement('span')
+      span.setAttribute('style', styleToCss(atom.style))
+      span.textContent = atom.text
+      parent.insertBefore(span, ref)
+      newNodes.push({ first: span, last: span })
+    }
+  }
+
+  if (cache.atoms) cache.atoms.splice(r.start, 0, ...inserted)
+  nodes.splice(r.start, 0, ...newNodes)
+  reStampDocCache(root)
+
+  // Re-dérivation des tailles : seul le marqueur touché change de rangs.
+  // (L'insertion hors marqueur ne décale aucun rang interne.)
+  if (inheritEffect && mB) {
+    applySizeEffects(root, ctx, mB as HTMLElement)
+  }
+
+  const caret = r.start + inserted.length
+  return { start: caret, end: caret }
+}
+
+/**
+ * Supprime en place (retour null → chemin complet). Même contrat que
+ * deleteRange() : efface [start,end), ou l'atome d'avant si l'intervalle
+ * est vide, retourne la position du curseur.
+ */
+export function deleteRangeInPlace(
+  root: HTMLElement,
+  ctx: SizeContext,
+  r: AtomRange,
+): AtomRange | null {
+  const cache = peekDocCache(root)
+  if (!cache) return null
+
+  let start = r.end > r.start ? r.start : Math.max(0, r.start - 1)
+  let end = r.end > r.start ? r.end : r.start
+  if (start >= end) return { start: r.start, end: r.start }
+  if (end > cache.nodes.length) return null
+
+  // Marqueurs dont les rangs internes changent (voisins de la coupe)
+  const markers = new Set<HTMLElement>()
+  for (const i of [start - 1, end]) {
+    const m = markerOfAtom(cache.nodes, i)
+    if (m) markers.add(m)
+  }
+
+  if (!removeAtomsInPlace(root, cache.nodes, start, end)) return null
+  if (cache.atoms) cache.atoms.splice(start, end - start)
+  cache.nodes.splice(start, end - start)
+  reStampDocCache(root)
+
+  for (const m of markers) {
+    // parentElement (et non isConnected) : un marqueur retiré n'a plus de
+    // parent ; l'éditeur lui-même peut vivre hors document en test.
+    if (m.parentElement) applySizeEffects(root, ctx, m)
+  }
+
+  return { start, end: start }
 }
 
 /**
