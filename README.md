@@ -45,3 +45,36 @@ au téléphone) : voir `5 TOOLS/Scripts/fleet/lease.py` dans le second
 cerveau. Les fichiers de données (`admin-data.json`, `defaults.json`)
 vivent dans `public/` et sont servis tels quels ; le certificat est
 renouvelé côté ReverseProxy, rien à faire ici.
+
+## API, projets et agents (2026-10-01)
+
+`server/` porte l'API (Fastify + SQLite) : comptes, **projets** (les mails
+en cours, multi-sessions, jamais perdus), **clés API** (pour un agent),
+rendu d'effets sans navigateur et **MCP** (`/api/v1/mcp`, auth X-API-Key).
+Le moteur de rendu pur (`src/engine/render.ts`) reprend exactement le HTML
+Outlook de l'éditeur — parité prouvée par `src/engine/render.test.ts`.
+
+```bash
+cd server && pnpm install && pnpm build && pnpm start   # API sur :8030
+pnpm vitest run --config server/vitest.config.ts          # tests API
+node bin/cli.mjs help                                     # CLI (projets, rendu)
+```
+
+- Panneaux du site : 🗂 **Mes projets** (liste, ouvrir, mettre à jour,
+  supprimer — badge « agent » sur les écritures d'agent), 👤 **compte**
+  (connexion, création/révocation de clés).
+- Un agent utilise l'API avec `X-API-Key` (clé créée sur le site), ou le
+  MCP (`mailcolorer_render`, `mailcolorer_draft_*`…), ou le CLI.
+- Dev : le serveur Vite proxifie `/api/v1` vers :8030 ; `/api/save-*`
+  reste au plugin admin local.
+
+## Déploiement
+
+- **Coolify (VM deploy du Rézal)** : deux apps sur ce dépôt —
+  `Dockerfile.api` (API, volume `/data` pour SQLite) et `Dockerfile.front`
+  (statique nginx). Domaines : `http://mail-colorer.rezal-mdm.com` pour le
+  front (vhost ReverseProxy → Traefik, cf. rezal-deploy/docs/) et
+  `http://mail-colorer-api.apps.rezal-mdm.com` (ou un chemin `/api/v1`
+  sous le même domaine) pour l'API. Runbook : `rezal-deploy/docs/deployer-une-app.md`.
+- **VM Web (héritée)** : `scripts/deploy-rezal.sh` (build + rsync) reste
+  valable tant que le front n'a pas migré ; le retirer après bascule.

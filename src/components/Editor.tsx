@@ -46,6 +46,24 @@ export function getAllEditorHtml(): string {
   return editorEl?.innerHTML?.trim() || ''
 }
 
+/**
+ * Charge un HTML de projet dans l'éditeur — le chemin inverse de
+ * getAllEditorHtml. Passe par l'historique : le document d'avant reste
+ * récupérable par Ctrl+Z, rien n'est jamais perdu en route.
+ */
+export function loadEditorHtml(html: string): boolean {
+  if (!editorEl || !html) return false
+  const op = recordOperation('Ouvrir un projet', 'style')
+  editorEl.innerHTML = html
+  normalizeEditor(editorEl, ctx())
+  const n = atomNodes(editorEl).length
+  savedSel = { start: n, end: n }
+  applyAtomRange(editorEl, { start: n, end: n })
+  op.commit()
+  editorEl.focus()
+  return true
+}
+
 export function getAllEditorText(): string {
   return (editorEl?.textContent?.trim() || '').replace(/ /g, ' ')
 }

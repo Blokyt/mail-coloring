@@ -7,6 +7,7 @@ import { ToolbarPanel } from './components/ToolbarPanel'
 import { Editor } from './components/Editor'
 import { Toast, showToast } from './components/Toast'
 import { AdminPanel } from './components/AdminPanel'
+import { restoreSession } from './stores/account'
 import './styles/app.css'
 
 // Charger les donnees admin au demarrage
@@ -58,6 +59,7 @@ export default function App() {
   // ?admin=1 dans l'URL active le mode admin
   onMount(() => {
     if (new URL(location.href).searchParams.has('admin')) activateAdmin()
+    void restoreSession()
   })
 
   return (

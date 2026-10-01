@@ -4,6 +4,9 @@ import { activeWord } from '../stores/word-inspect'
 import { performUndo, performRedo, canUndo, canRedo, undoLabel, redoLabel } from '../stores/undo-redo'
 import { showToast } from './Toast'
 import { HistoryPanel } from './HistoryPanel'
+import { AccountPanel } from './AccountPanel'
+import { ProjectsPanel } from './ProjectsPanel'
+import { user, restoreSession } from '../stores/account'
 import { cleanForOutlook } from '../engine/effects'
 
 /* ══════════════════════════════════════════
@@ -146,6 +149,9 @@ function LinkIndicator() {
 }
 
 export function Header() {
+  const [projectsOpen, setProjectsOpen] = createSignal(false)
+  const [accountOpen, setAccountOpen] = createSignal(false)
+  const refresh = async () => { await restoreSession() }
   // Merge buffer + preview override pour l'affichage
   const s = () => {
     const base = styleBuffer()
@@ -238,7 +244,22 @@ export function Header() {
       <button class="btn-icon" title={undoLabel() ? `Annuler : ${undoLabel()}` : 'Annuler (Ctrl+Z)'} onClick={handleUndo} disabled={!canUndo()} style={{ opacity: canUndo() ? '1' : '0.4' }}>↩</button>
       <button class="btn-icon" title={redoLabel() ? `Rétablir : ${redoLabel()}` : 'Rétablir (Ctrl+Y)'} onClick={handleRedo} disabled={!canRedo()} style={{ opacity: canRedo() ? '1' : '0.4' }}>↪</button>
       <HistoryPanel />
+      <button
+        class="btn-icon"
+        classList={{ active: !!user() }}
+        title="Mes projets — mails sauvegardés, sur tous tes appareils et remplis par tes agents"
+        onClick={() => setProjectsOpen(true)}
+      >🗂</button>
+      <button
+        class="btn-icon"
+        classList={{ active: !!user() }}
+        title={user() ? `Compte : ${user()?.username}` : 'Se connecter (projets en ligne, clés pour agents)'}
+        onClick={() => setAccountOpen(true)}
+      >{user() ? '👤' : '🔑'}</button>
       <button class="btn btn-peach" style={{ "margin-left": "8px" }} onClick={handleCopy}>Copier</button>
+
+      <ProjectsPanel open={projectsOpen()} onClose={() => { setProjectsOpen(false); void refresh() }} />
+      <AccountPanel open={accountOpen()} onClose={() => setAccountOpen(false)} />
     </header>
   )
 }

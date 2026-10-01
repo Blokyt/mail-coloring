@@ -38,4 +38,14 @@ function adminApiPlugin(): Plugin {
 
 export default defineConfig({
   plugins: [solid(), adminApiPlugin()],
+  server: {
+    // L'API distante (server/) : les panneaux Compte et Mes projets.
+    // /api/save-* reste au plugin admin ci-dessus, jamais proxifié.
+    proxy: {
+      '/api/v1': {
+        target: 'http://127.0.0.1:8030',
+        changeOrigin: false,
+      },
+    },
+  },
 })

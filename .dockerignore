@@ -1,0 +1,8 @@
+node_modules
+server/node_modules
+server/dist
+dist
+test-results
+e2e
+*.md
+.git
