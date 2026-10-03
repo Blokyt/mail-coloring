@@ -115,6 +115,18 @@ export function buildApp({ db, catalogPath, corsOrigin, authRateLimit }: BuildOp
     return { token: signJwt(user.id), user: publicUser(user) }
   })
 
+  app.patch('/api/v1/auth/password', async (req, reply) => {
+    const auth = resolveAuth(db, req.headers)
+    if (!auth) return reply.status(401).send({ error: 'Non authentifié' })
+    const b = req.body as { current?: string; next?: string } ?? {}
+    if (!verifyPassword(String(b.current || ''), auth.user.password_hash)) {
+      return reply.status(401).send({ error: 'Mot de passe actuel invalide' })
+    }
+    if (String(b.next || '').length < 8) return reply.status(400).send({ error: 'Nouveau mot de passe : 8 caractères minimum' })
+    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(String(b.next)), auth.user.id)
+    return { ok: true }
+  })
+
   app.get('/api/v1/auth/me', async (req, reply) => {
     const auth = resolveAuth(db, req.headers)
     if (!auth) return reply.status(401).send({ error: 'Non authentifié' })

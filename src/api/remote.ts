@@ -83,6 +83,11 @@ export const remote = {
   me() {
     return api<{ user: RemoteUser; via: string }>('/auth/me')
   },
+  changePassword(current: string, next: string) {
+    return api<{ ok: boolean }>('/auth/password', {
+      method: 'PATCH', body: JSON.stringify({ current, next }),
+    })
+  },
   keys() {
     return api<{ keys: ApiKeyInfo[] }>('/keys')
   },

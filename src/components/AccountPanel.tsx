@@ -22,6 +22,18 @@ export function AccountPanel(props: { open: boolean; onClose: () => void }) {
   const [freshKey, setFreshKey] = createSignal('')
   const [keyName, setKeyName] = createSignal('')
   const [busy, setBusy] = createSignal(false)
+  const [pwCurrent, setPwCurrent] = createSignal('')
+  const [pwNext, setPwNext] = createSignal('')
+
+  const changePassword = async () => {
+    try {
+      await remote.changePassword(pwCurrent(), pwNext())
+      setPwCurrent(''); setPwNext('')
+      showToast('Mot de passe changé')
+    } catch (err) {
+      showToast((err as Error).message, true)
+    }
+  }
 
   const submit = async (e: Event) => {
     e.preventDefault()
@@ -127,6 +139,13 @@ export function AccountPanel(props: { open: boolean; onClose: () => void }) {
           }>
             <p class="account-hint">Aucune clé active.</p>
           </Show>
+
+          <div class="account-section-label">Changer de mot de passe</div>
+          <div class="account-key-create">
+            <input class="account-input" type="password" placeholder="Actuel" value={pwCurrent()} onInput={(e) => setPwCurrent(e.currentTarget.value)} />
+            <input class="account-input" type="password" placeholder="Nouveau (8+)" value={pwNext()} onInput={(e) => setPwNext(e.currentTarget.value)} />
+            <button class="btn" onClick={changePassword} disabled={!pwCurrent() || !pwNext()}>Changer</button>
+          </div>
 
           <div class="account-footer">
             <button class="btn" onClick={async () => { logout(); showToast('Déconnecté') }}>Se déconnecter</button>
