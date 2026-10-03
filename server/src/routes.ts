@@ -62,7 +62,7 @@ const draftSummary = (d: DraftRow) => ({
  * Les routes de l'API, enregistrées SOUS UN PRÉFIXE et SANS préfixe :
  *  - préfixe /api/v1 : accès direct (domaine .apps, CLI, dev Vite proxifié) ;
  *  - sans préfixe : derrière Traefik, qui STRIPPE le PathPrefix déclaré dans
- *    Coolify (http://mail-colorer.rezal-mdm.com/api/v1 → conteneur : /…).
+ *    Coolify (http://<domaine>/api/v1 → conteneur : /…).
  * Le même service répond donc aux deux formes, une seule vérité pour les
  * routes, déclarées ici sans leur préfixe.
  */

@@ -13,7 +13,7 @@
  *   node bin/cli.mjs effects
  *   node bin/cli.mjs login vicente   (affiche le token ; les clés se créent sur le site)
  *
- * Environnement : MAILCOLORER_URL (défaut https://mail-colorer.rezal-mdm.com),
+ * Environnement : MAILCOLORER_URL (défaut https://mail-colorer-api.apps.rezal-mdm.com),
  * MAILCOLORER_API_KEY.
  */
 import fs from 'node:fs'

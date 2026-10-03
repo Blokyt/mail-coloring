@@ -100,7 +100,7 @@ function buildMcpServer(db: DB, user: UserRow, catalog: EffectsCatalog): McpServ
     return {
       content: [{
         type: 'text',
-        text: JSON.stringify({ html, saved_draft_id: saved ?? null, note: saved ? 'Projet enregistré : ouvre mail-colorer.rezal-mdm.com → Mes projets pour le relire, l’ajuster et le copier vers Outlook.' : null }),
+        text: JSON.stringify({ html, saved_draft_id: saved ?? null, note: saved ? 'Projet enregistré : ouvre mail-colorer.apps.rezal-mdm.com → Mes projets pour le relire, l’ajuster et le copier vers Outlook.' : null }),
       }],
     }
   })
