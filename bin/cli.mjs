@@ -21,7 +21,7 @@ import process from 'node:process'
 import readline from 'node:readline/promises'
 
 const args = process.argv.slice(2)
-let url = process.env.MAILCOLORER_URL || 'https://mail-colorer.rezal-mdm.com'
+let url = process.env.MAILCOLORER_URL || 'https://mail-colorer-api.apps.rezal-mdm.com'
 let key = process.env.MAILCOLORER_API_KEY || ''
 const positional = []
 for (let i = 0; i < args.length; i++) {

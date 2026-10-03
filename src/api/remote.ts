@@ -1,9 +1,13 @@
 /**
  * Client API distante (compte, projets, clés) — consommé par les panneaux
- * du site. L'API vit derrière /api/v1 (proxy Vite en dev, nginx en prod) ;
- * l'agent, lui, passe par l'API ou le MCP avec sa clé, jamais par ici.
+ * du site. En dev, l'API est derrière /api/v1 (proxy Vite). En prod, elle
+ * vit sur son propre domaine (VITE_API_BASE au build, ex.
+ * https://mail-colorer-api.apps.rezal-mdm.com/api/v1) et le site l'appelle
+ * en cross-origin (CORS côté serveur). L'agent, lui, passe par l'API ou le
+ * MCP avec sa clé, jamais par ici.
  */
 
+const API_BASE: string = (import.meta.env.VITE_API_BASE as string | undefined) || '/api/v1'
 const TOKEN_KEY = 'artlequin_token'
 
 export interface RemoteUser {
@@ -60,7 +64,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { 'content-type': 'application/json' }
   const token = getToken()
   if (token) headers['authorization'] = `Bearer ${token}`
-  const res = await fetch(`/api/v1${path}`, { ...init, headers })
+  const res = await fetch(`${API_BASE}${path}`, { ...init, headers })
   if (!res.ok) {
     let msg = `Erreur ${res.status}`
     try { msg = (await res.json()).error || msg } catch { /* corps vide */ }
