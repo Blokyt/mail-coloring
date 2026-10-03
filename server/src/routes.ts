@@ -58,27 +58,23 @@ const draftSummary = (d: DraftRow) => ({
   created_at: d.created_at, updated_at: d.updated_at,
 })
 
-export function buildApp({ db, catalogPath, corsOrigin, authRateLimit }: BuildOptions): FastifyInstance {
-  const app = Fastify({ logger: false, bodyLimit: 1_000_000 })
+/**
+ * Les routes de l'API, enregistrées SOUS UN PRÉFIXE et SANS préfixe :
+ *  - préfixe /api/v1 : accès direct (domaine .apps, CLI, dev Vite proxifié) ;
+ *  - sans préfixe : derrière Traefik, qui STRIPPE le PathPrefix déclaré dans
+ *    Coolify (http://mail-colorer.rezal-mdm.com/api/v1 → conteneur : /…).
+ * Le même service répond donc aux deux formes, une seule vérité pour les
+ * routes, déclarées ici sans leur préfixe.
+ */
+export function registerRoutes(app: FastifyInstance, db: DB, catalogPath?: string, authRateLimit?: number) {
   const rateLimited = makeRateLimiter(authRateLimit ?? 10)
-  const origin = corsOrigin ?? config.corsOrigin
-
-  if (origin) {
-    app.addHook('onRequest', async (_req, reply) => {
-      reply.header('Access-Control-Allow-Origin', origin)
-      reply.header('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS')
-      reply.header('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-API-Key')
-    })
-    app.options('/api/v1/*', async (_req, reply) => reply.status(204).send())
-  }
-
   const catalog: EffectsCatalog = loadCatalog(catalogPath)
 
   /* ═══════════ Santé & catalogue ═══════════ */
 
-  app.get('/api/v1/health', async () => ({ ok: true, service: 'mailcolorer', time: now() }))
+  app.get('/health', async () => ({ ok: true, service: 'mailcolorer', time: now() }))
 
-  app.get('/api/v1/effects', async () => ({
+  app.get('/effects', async () => ({
     baseSizeDefault: 18,
     colorEffects: catalog.colorEffects,
     bgEffects: Object.fromEntries(Object.entries(catalog.colorEffects).map(([id, e]) => [`${id}_bg`, e])),
@@ -87,7 +83,7 @@ export function buildApp({ db, catalogPath, corsOrigin, authRateLimit }: BuildOp
 
   /* ═══════════ Comptes ═══════════ */
 
-  app.post('/api/v1/auth/register', async (req, reply) => {
+  app.post('/auth/register', async (req, reply) => {
     if (rateLimited(req.ip)) return reply.status(429).send({ error: 'Trop de requêtes' })
     const b = req.body as { username?: string; password?: string; display_name?: string } ?? {}
     const username = String(b.username || '').trim()
@@ -105,7 +101,7 @@ export function buildApp({ db, catalogPath, corsOrigin, authRateLimit }: BuildOp
     return { token: signJwt(user.id), user: publicUser(user) }
   })
 
-  app.post('/api/v1/auth/login', async (req, reply) => {
+  app.post('/auth/login', async (req, reply) => {
     if (rateLimited(req.ip)) return reply.status(429).send({ error: 'Trop de requêtes' })
     const b = req.body as { username?: string; password?: string } ?? {}
     const user = db.prepare('SELECT * FROM users WHERE username = ?').get(String(b.username || '').trim()) as UserRow | undefined
@@ -115,7 +111,7 @@ export function buildApp({ db, catalogPath, corsOrigin, authRateLimit }: BuildOp
     return { token: signJwt(user.id), user: publicUser(user) }
   })
 
-  app.patch('/api/v1/auth/password', async (req, reply) => {
+  app.patch('/auth/password', async (req, reply) => {
     const auth = resolveAuth(db, req.headers)
     if (!auth) return reply.status(401).send({ error: 'Non authentifié' })
     const b = req.body as { current?: string; next?: string } ?? {}
@@ -127,7 +123,7 @@ export function buildApp({ db, catalogPath, corsOrigin, authRateLimit }: BuildOp
     return { ok: true }
   })
 
-  app.get('/api/v1/auth/me', async (req, reply) => {
+  app.get('/auth/me', async (req, reply) => {
     const auth = resolveAuth(db, req.headers)
     if (!auth) return reply.status(401).send({ error: 'Non authentifié' })
     return { user: publicUser(auth.user), via: auth.via }
@@ -143,7 +139,7 @@ export function buildApp({ db, catalogPath, corsOrigin, authRateLimit }: BuildOp
 
   /* ═══════════ Rendu ═══════════ */
 
-  app.post('/api/v1/render', async (req, reply) => {
+  app.post('/render', async (req, reply) => {
     const auth = await requireAuth(req, reply)
     if (!auth) return
     let spec: RenderSpec
@@ -168,14 +164,14 @@ export function buildApp({ db, catalogPath, corsOrigin, authRateLimit }: BuildOp
 
   /* ═══════════ Projets (drafts) ═══════════ */
 
-  app.get('/api/v1/drafts', async (req, reply) => {
+  app.get('/drafts', async (req, reply) => {
     const auth = await requireAuth(req, reply)
     if (!auth) return
     const rows = db.prepare('SELECT * FROM drafts WHERE user_id = ? ORDER BY updated_at DESC LIMIT 200').all(auth.user.id) as DraftRow[]
     return { drafts: rows.map(draftSummary) }
   })
 
-  app.post('/api/v1/drafts', async (req, reply) => {
+  app.post('/drafts', async (req, reply) => {
     const auth = await requireAuth(req, reply)
     if (!auth) return
     const b = req.body as { title?: string; html?: string; spec?: unknown; status?: string } ?? {}
@@ -196,7 +192,7 @@ export function buildApp({ db, catalogPath, corsOrigin, authRateLimit }: BuildOp
     return reply.status(201).send({ draft: draftOut(row) })
   })
 
-  app.get('/api/v1/drafts/:id', async (req, reply) => {
+  app.get('/drafts/:id', async (req, reply) => {
     const auth = await requireAuth(req, reply)
     if (!auth) return
     const row = db.prepare('SELECT * FROM drafts WHERE id = ? AND user_id = ?')
@@ -205,7 +201,7 @@ export function buildApp({ db, catalogPath, corsOrigin, authRateLimit }: BuildOp
     return { draft: draftOut(row) }
   })
 
-  app.patch('/api/v1/drafts/:id', async (req, reply) => {
+  app.patch('/drafts/:id', async (req, reply) => {
     const auth = await requireAuth(req, reply)
     if (!auth) return
     const id = (req.params as { id: string }).id
@@ -228,7 +224,7 @@ export function buildApp({ db, catalogPath, corsOrigin, authRateLimit }: BuildOp
     return { draft: draftOut(fresh) }
   })
 
-  app.delete('/api/v1/drafts/:id', async (req, reply) => {
+  app.delete('/drafts/:id', async (req, reply) => {
     const auth = await requireAuth(req, reply)
     if (!auth) return
     const r = db.prepare('DELETE FROM drafts WHERE id = ? AND user_id = ?')
@@ -239,7 +235,7 @@ export function buildApp({ db, catalogPath, corsOrigin, authRateLimit }: BuildOp
 
   /* ═══════════ Clés API (JWT uniquement) ═══════════ */
 
-  app.get('/api/v1/keys', async (req, reply) => {
+  app.get('/keys', async (req, reply) => {
     const auth = await requireAuth(req, reply)
     if (!auth) return
     if (auth.via !== 'jwt') return reply.status(403).send({ error: 'Les clés se gèrent depuis le site' })
@@ -247,7 +243,7 @@ export function buildApp({ db, catalogPath, corsOrigin, authRateLimit }: BuildOp
     return { keys: rows }
   })
 
-  app.post('/api/v1/keys', async (req, reply) => {
+  app.post('/keys', async (req, reply) => {
     const auth = await requireAuth(req, reply)
     if (!auth) return
     if (auth.via !== 'jwt') return reply.status(403).send({ error: 'Les clés se gèrent depuis le site' })
@@ -263,7 +259,7 @@ export function buildApp({ db, catalogPath, corsOrigin, authRateLimit }: BuildOp
     return reply.status(201).send({ id, name, key: k.full, prefix: k.prefix, scope: 'drafts rw render', warning: 'Conservez cette clé maintenant, elle ne sera plus affichée.' })
   })
 
-  app.delete('/api/v1/keys/:id', async (req, reply) => {
+  app.delete('/keys/:id', async (req, reply) => {
     const auth = await requireAuth(req, reply)
     if (!auth) return
     if (auth.via !== 'jwt') return reply.status(403).send({ error: 'Les clés se gèrent depuis le site' })
@@ -272,6 +268,29 @@ export function buildApp({ db, catalogPath, corsOrigin, authRateLimit }: BuildOp
     if (r.changes === 0) return reply.status(404).send({ error: 'Clé introuvable' })
     return { ok: true }
   })
+}
 
+export function buildApp({ db, catalogPath, corsOrigin, authRateLimit }: BuildOptions): FastifyInstance {
+  const app = Fastify({ logger: false, bodyLimit: 1_000_000 })
+  const origin = corsOrigin ?? config.corsOrigin
+
+  if (origin) {
+    app.addHook('onRequest', async (_req, reply) => {
+      reply.header('Access-Control-Allow-Origin', origin)
+      reply.header('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS')
+      reply.header('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-API-Key')
+    })
+    app.options('/*', async (_req, reply) => reply.status(204).send())
+  }
+
+  // Accès direct (domaine .apps, dev Vite proxifié) : routes sous /api/v1
+  void app.register(
+    (scoped) => void registerRoutes(scoped, db, catalogPath, authRateLimit),
+    { prefix: '/api/v1' },
+  )
+  // Derrière Traefik (PathPrefix strippé par Coolify) : routes à la racine
+  void app.register(
+    (scoped) => void registerRoutes(scoped, db, catalogPath, authRateLimit),
+  )
   return app
 }

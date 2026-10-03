@@ -167,7 +167,10 @@ function buildMcpServer(db: DB, user: UserRow, catalog: EffectsCatalog): McpServ
   return server
 }
 
-/** Monte les routes MCP (stateless) avec auth X-API-Key */
+/**
+ * Monte les routes MCP (stateless) avec auth X-API-Key — aux deux chemins,
+ * comme les routes REST (cf. routes.ts : Traefik strippe le PathPrefix).
+ */
 export function registerMcpRoutes(app: FastifyInstance, db: DB, catalogPath?: string) {
   const catalog = loadCatalog(catalogPath)
 
@@ -187,7 +190,11 @@ export function registerMcpRoutes(app: FastifyInstance, db: DB, catalogPath?: st
     await transport.handleRequest(req.raw, reply.raw, req.body)
   }
 
-  app.post('/api/v1/mcp', async (req, reply) => { await handle(req as never, reply as never) })
-  app.delete('/api/v1/mcp', async (_req, reply) => reply.status(405).send({ error: 'Stateless: pas de session' }))
-  app.get('/api/v1/mcp', async (_req, reply) => reply.status(405).send({ error: 'Stateless: pas de flux SSE' }))
+  const mount = (scoped: FastifyInstance) => {
+    scoped.post('/mcp', async (req, reply) => { await handle(req as never, reply as never) })
+    scoped.delete('/mcp', async (_req, reply) => reply.status(405).send({ error: 'Stateless: pas de session' }))
+    scoped.get('/mcp', async (_req, reply) => reply.status(405).send({ error: 'Stateless: pas de flux SSE' }))
+  }
+  void app.register(mount, { prefix: '/api/v1' })
+  void app.register(mount)
 }
